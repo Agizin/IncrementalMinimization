@@ -1,0 +1,227 @@
+\documentclass[12pt]{beamer}
+\mode<presentation>
+
+\title{Minimization of Symbolic Automata}
+\author{Jonathan Homburg}
+\date{}
+
+\usepackage{algorithm2e}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{centernot}
+\usepackage{changepage}
+\usepackage{framed}
+\usepackage{graphicx}
+\usepackage{latexsym}
+\usepackage{enumerate}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{verbatim}
+\usepackage{stmaryrd}
+
+\long\def\/*#1*/{}
+
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+\DeclarePairedDelimiter{\floor}{\lfloor}{\rfloor}
+
+\makeatletter
+\let\oldabs\abs
+\def\abs{\@ifstar{\oldabs}{\oldabs*}}
+
+\newcommand{\suchthat}{\hphantom l | \hphantom l}
+\newcommand{\denotation}[1]{\llbracket #1 \rrbracket}
+
+\setbeamersize{text margin left = 8mm, text margin right = 8mm}
+
+\begin{document}
+\begin{frame}[plain]
+\titlepage
+
+Based on "Minimization of Symbolic Automata" by Loris D'Antoni \& Margus Veanes
+\end{frame}
+
+\begin{frame}
+\frametitle{Intuition}
+\begin{itemize}
+\item A deterministic finite automaton (DFA) is defined over a finite alphabet. Characters from this alphabet are given to the DFA as input and also label the state transitions.
+\item A symbolic finite automaton (SFA) has inputs defined over a (possibly infinite) domain set and transitions labeled by a set of predicates over that domain.
+\begin{itemize}
+\item e.g. an SFA might have $\mathbb{Z}$ as a domain and might have predicates $\text{odd}(x)$ and $\text{even}(x)$ for transitions.
+\end{itemize}
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\begin{definition}
+An \alert{effective Boolean algebra} is a tuple $A=(D, \Psi, \denotation{\cdot}, \perp, \top, \wedge, \vee, \neg)$ such that
+\begin{itemize}
+\item $D$ is a recursively enumerable set of domain elements.
+\item $\Psi$ is a recursively enumerable set of predicates  closed under  $\wedge, \vee, \neg$ and with $\bot, \top \in \Psi$
+\item $\denotation{\cdot} : \Psi \to 2^D$ (called the denotation function) is recursively enumerable and has:
+\begin{itemize}
+\item $\denotation{\bot} = \varnothing$ and $\denotation{\top} = D$
+\item $\forall \hphantom l \varphi, \psi \in \Psi$, $\denotation{\phi \wedge \psi}= \denotation{\varphi}\cap\denotation{\psi}$, $\denotation{\phi \vee \psi} = \denotation{\varphi}\cup\denotation{\psi}$, and $\denotation{\neg \phi} = D \setminus \denotation{\varphi}$
+\end{itemize}
+\end{itemize}
+\end{definition}
+For $\varphi \in \Psi$, if $\denotation{\varphi} \neq \varnothing$ then $\varphi$ is said to be satisfiable and we write $IsSat(\varphi)$. It is generally required that satisfiability checking is decidable.
+\end{frame}
+
+\begin{frame}
+\begin{definition}
+A \alert{symbolic finite automaton} is a tuple $M=(Q, A, q^0, \Delta, F)$ such that
+\begin{itemize}
+\item $Q$ is a finite set of states
+\item $A$ is an effective Boolean algebra, called the alphabet
+\item $q^0 \in Q$ is the initial state
+\item $\Delta \subseteq Q \times \Psi_A \times Q$ is a finite set of transitions
+\item $F \subseteq Q$ is the set of final states
+\end{itemize}
+\end{definition}
+Most notation used for SFAs is directly analogous to those used for DFAs. e.g. $L(M),\delta(p,a), \overset{\leftarrow}{\Delta}(q)$ 
+\end{frame} 
+
+\begin{frame}
+\frametitle{Properties of a Symbolic Automaton}
+Let $M=(Q, A, q^0, \Delta, F)$ be an SFA
+\begin{itemize}
+\item $M$ is \alert{determinstic} iff $\forall (p, \varphi, p'), (p, \varphi', q') \in \Delta$ we have $IsSat(\varphi \wedge \varphi')$ implies $q = q'$
+\item $M$ is \alert{complete} iff $\forall a \in D_A, p \in Q$ $\exists q \in Q, \varphi \in \Psi_A$ such that $(p, \varphi, q) \in \Delta$ and $a \in \denotation{\varphi}$
+\item $M$ is \alert{clean} iff $\forall (p, \varphi, q) \in \Delta$, $p$ is reachable from $q^0$ and $IsSat(\varphi)$
+\item $M$ is \alert{normalized} iff $\forall p,q \in Q$ there is at most one transition from $p$ to $q$
+\end{itemize}
+It is nearly always assumed that an SFA is clean and normalized.
+
+Four our purposes, it will generally be assumed that every SFA is deterministic and complete.
+\end{frame}
+
+\begin{frame}
+\frametitle{Minimality of SFAs}
+\begin{definition}
+An SFA M is \alert{minimal} if it is deterministic, complete, clean normalized, and for all $p,q \in Q$, $p=q$ if and only if $L_p(M) = L_q (M)$.
+\end{definition}
+
+\begin{theorem}
+If $M$ and $N$ are minimal SFAs such that $L(M) = L(N)$ then $M$ and $N$ are equivalent automata up to the relabeling of states and equivalence of predicates.
+\end{theorem}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{$M$-equivalence}
+\begin{definition}
+Two states $p,q \in Q$ are \alert{$M$-equivalent}, denoted $p \equiv_M q$, if $L_p(M) = L_q(M)$.
+\end{definition}
+
+\begin{theorem}
+If $M$ is a clean, complete and deterministic SFA then $M_{/\equiv_M}$ is minimal and $L(M) = L(M_{/\equiv_M})$.
+\end{theorem}
+\end{frame}
+
+\begin{frame}
+\frametitle{Moore's Algorithm (DFA)}
+Let $M = (Q, \Sigma, q^0, \delta, F)$ be a DFA.\\
+Define $\equiv_0$ on $Q$ such that $p \equiv_0 q \iff p,q \in F$ or $p,q \not\in F$
+Recursively define $\equiv_i$ on $Q$ such that
+$$p \equiv_i q \iff p \equiv_{i-1} q \text{ and } \forall a \in \Sigma, \delta(p,a) \equiv_{i-1} \delta(q,a)$$
+Continue until $\equiv_k$ and $\equiv_{k-1}$ are equivalent relations.\\
+$M_{/\equiv_k}$ is minimal.
+\end{frame}
+
+\begin{frame}
+\frametitle{Moore's Algorithm (SFA)}
+Let $M = (Q, A, q^0, \Delta, F)$ be an SFA.\\
+Define $\equiv_0$ on $Q$ s.t. $p \equiv_0 q \iff (p,q) \in (F^c \times F) \cup (F \times F^c)$
+Recursively define $\equiv_i$ on $Q$ such that
+\begin{align*}
+p \equiv_{i} q &\iff p \equiv_{i-1} q \text{ or } \\
+&\exists (p,\varphi,p'), (q, \psi, q') \in \Delta \text{ s.t. } p' \equiv_{i-1} q' \text{ and IsSat($\varphi \wedge \psi$)}
+\end{align*}
+Continue until $\equiv_k$ and $\equiv_{k-1}$ are equivalent relations\\
+Define $\equiv_M$ on $Q$ such that $p \equiv_M q \iff p \centernot\equiv_k q$\\
+$M_{/\equiv_M}$ is minimal
+\end{frame}
+
+\begin{frame}
+\frametitle{Hopcroft's Algorithm (DFA)}
+\begin{algorithm}[H]
+\SetKwInOut{Input}{input}
+\Input{DFA  $M = (Q, \Sigma, q^0, \delta, F)$}
+$P = \{ F, Q \setminus F \}$ \tcp{$Q$ is partitioned}
+$W = \{F\} $ \tcp{Working set}
+\While{$W \neq \varnothing$}
+{
+	remove any $R$ from $W$\\
+	\For{$a \in \Sigma$}
+	{
+		$S = \delta^{-1} (R, a)$ \tcp{states leading into $R$ on $a$}
+		\For{$T \in P$}
+		{
+			\If{$T \cap S \neq \varnothing$ and $T \setminus S \neq \varnothing$}	
+			{
+				Split($T$, $T \cap S$, $T \setminus S$) \tcp{refines $P,W$. Adds smaller of $\{T \cap S, T \setminus S\}$ to $W$}
+			}
+		}
+	}
+}
+Return $M_{/\equiv_P}$
+\end{algorithm}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Hopcroft's Algorithm (SFA)}
+\begin{algorithm}[H]
+\SetKwInOut{Input}{input}
+\Input{SFA  $M = (Q, A, q^0, \Delta, F)$}
+$P = \{ F, Q \setminus F \}$ \tcp{$Q$ is partitioned}
+$W = \{F\} $ \tcp{Working set}
+\While{$W \neq \varnothing$}
+{
+	remove any $R$ from $W$\\
+	\For{$\varphi \in$ Minterms($M$)}
+	{
+		$S = \delta^{-1} (R, \varphi)$ \tcp{states leading into $R$ on $a$}
+		\For{$T \in P$}
+		{
+			\If{$T \cap S \neq \varnothing$ and $T \setminus S \neq \varnothing$}	
+			{
+				Split($T$, $T \cap S$, $T \setminus S$) \tcp{refines $P,W$. Adds smaller of $\{T \cap S, T \setminus S\}$ to $W$}
+			}
+		}
+	}
+}
+Return $M_{/\equiv_P}$
+\end{algorithm}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Modified Hopcroft's Algorithm (SFA)}
+\begin{algorithm}[H]
+\SetKwInOut{Input}{input}
+\Input{SFA  $M = (Q, A, q^0, \Delta, F)$}
+$P = \{ F, Q \setminus F \}$ \\
+$W = \{F\} $\\
+\While{$W \neq \varnothing$}
+{
+	remove any $R$ from $W$\\
+	$S = \overset{\leftarrow}{\Delta}(R)$ \tcp{set of all states going into $R$}
+	$\varGamma = \{S \ni p \mapsto \bigvee_{(p,\varphi,q) \in \Delta, q \in R}\varphi\}$ \tcp{$\varGamma(p)$ is disjunction of all predicates going into $R$}
+	\While{$\exists T \in P$ with $T \cap S \neq \varnothing$ and $\exists p_1, p_2 \in T$ s.t. $\text{IsSat}(\neg (\varGamma(p_1) \iff \varGamma(p_2)))$}
+	{
+		Let $a \in \denotation{\neg(\varGamma(p_1) \iff \varGamma(p_2))}$\\
+		$T_1 = \{ p \in T \suchthat a \in \varGamma(p)\}$\\
+		Split($T$, $T_1$, $T \setminus T_1$)
+	}
+
+}
+Return $M_{/\equiv_P}$ (Note: optional optimization steps are skipped)
+\end{algorithm}
+\end{frame}
+
+\end{document}
