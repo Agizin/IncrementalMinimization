@@ -1,0 +1,172 @@
+\documentclass[12pt]{article}
+
+\newcommand{\name}{Jonathan Homburg}
+
+\usepackage{algorithm2e}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{centernot}
+\usepackage{changepage}
+\usepackage{framed}
+\usepackage{graphicx}
+\usepackage{latexsym}
+\usepackage{enumerate}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{verbatim}
+\usepackage{stmaryrd}
+
+\long\def\/*#1*/{}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{mydef}{Definition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{remark}{Remark}
+
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+\DeclarePairedDelimiter\norm{\lvert\lvert}{\rvert\rvert}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+\DeclarePairedDelimiter{\floor}{\lfloor}{\rfloor}
+
+\makeatletter
+\let\oldabs\abs
+\def\abs{\@ifstar{\oldabs}{\oldabs*}}
+
+\usepackage[final]{hyperref} % adds hyper links inside the generated pdf file
+\hypersetup{
+	colorlinks=true,       % false: boxed links; true: colored links
+	linkcolor=blue,          % color of internal links
+	citecolor=blue,        % color of links to bibliography
+	filecolor=magenta,      % color of file links
+	urlcolor=blue         %%% from template
+}
+
+\setlength{\parskip}{1pc}
+\setlength{\parindent}{0pt}
+\setlength{\topmargin}{-4pc}
+\setlength{\textheight}{9.5in}
+\setlength{\oddsidemargin}{-1pc}
+\setlength{\evensidemargin}{0pc}
+\setlength{\textwidth}{6.5in}
+
+\newcommand{\suchthat}{\hphantom l | \hphantom l}
+\newcommand{\denotation}[1]{\llbracket #1 \rrbracket}
+
+\SetKwProg{Fn}{Function}{\string:}{}
+\SetKwFunction{Nmize}{Normalize}
+\SetKwFunction{Make}{Make}
+\SetKwFunction{Find}{Find}
+\SetKwFunction{Union}{Union}
+\SetKwFunction{MinIncr}{IncrementalMinimize}
+\SetKwFunction{Equivp}{Equiv-p}
+\SetKwFunction{JoinStates}{JoinStates}
+\SetKw{Cont}{continue}
+\SetKw{And}{and}
+\SetKw{Not}{not}
+
+\begin{document}
+
+A disjoint set data structure will be used to represent equivalence classes of states. Specifically, for $n$ disjoint sets, the following operations will be defined:
+\begin{enumerate}
+\item $\Make{i}$, a set containing only $i$ will be created
+\item $\Find{i}$, returns a (consistent) identifying element for $S_i$, the set containing $i$.
+\item $\Union(i,j)$, creates a new set $S_k$ such that $S_k = S_i \cup S_j$ and sets $S_i, S_j$ are destroyed
+\end{enumerate} 
+
+The general incremental minimization function for complete, deterministic SFAs is given below:
+
+\begin{algorithm}
+\Fn{\MinIncr{$M = (Q, A, q^0, \Delta, F)$}}
+{
+	\For{$q \in Q$}
+	{
+		$\Make(q)$
+	}
+	$neq = \{ \Nmize(p,q) \suchthat p \in F, q \in Q \setminus F \}$ \tcp{initializes set of pairs known not equal}
+	\For{$p \in Q$}
+	{
+		\For{$q \in \{x \in Q \suchthat x > p\}$}
+		{
+			\If{$(p,q) \in neq$}
+			{
+				\Cont
+			}
+			\If{$\Find{p} = \Find{q}$}
+			{
+				\Cont
+			}
+			$equiv, path = \varnothing$\\
+			\uIf{\Equivp($p$,$q$)}
+			{
+				\For{($(p',q') \in equiv$)}
+				{
+					$\Union{p',q'}$
+				}
+			}
+			\Else
+			{
+				\For{$(p',q') \in path$}
+				{
+					$neq  = neq \cup \{(p',q')\}$
+				}
+			}
+		}
+	}
+	\Return{\JoinStates{$M$}}
+}
+\end{algorithm}
+
+Note that we assume there exists an ordering on $Q$ (i.e. $p < q$ makes sense for all $p,q \in Q$). This can be done easily by labeling each state with a unique positive integer. $\Nmize$ takes a pair $(p,q)$ as input and reorders it so that the first element is less than the second.
+$\JoinStates$ merges the states that share the same equivalence class (i.e. share the same disjoint set).
+
+\newpage
+
+$\Equivp$ is defined below and is the only major difference between the SFA and DFA case. It returns True on $(p,q)$ iff $p,q$ are equivalent. It uses $equiv$ to track pairs of states found to be equivalent and $path$ to keep track of the path through the set of pairs of states.
+
+\begin{algorithm}
+\Fn{\Equivp{$p,q$}}
+{
+	\If{$(p,q) \in neq$}
+	{
+		\Return False
+	}
+	\If{$(p,q) \in path$} 
+	{
+		\tcp{cycle of equivalences found}
+		\Return True
+	}
+	$path = path \cup \{ (p,q) \}$\\
+	$Out_p = \{ \varphi \in \Psi_A \suchthat \exists p', (p,\varphi,p')\in\Delta\}$ \tcp{All outgoing predicates of $p$}
+	$Out_q = \{ \psi \in \Psi_A \suchthat \exists q', (q,\psi,q')\in \Delta \}$\\
+	\While{$Out_p \cup Out_q \neq \varnothing$}
+	{
+		Let $a \in \denotation{(\bigvee_{\varphi \in Out_p} \ \varphi) \wedge (\bigvee_{\psi \in Out_q} \psi)}$ \tcp{Always satisfiable while in the loop assuming $M$ is complete}
+		$(p',q') = \Nmize(\Find(\delta(p,a)), \Find(\delta(q,a)))$\\
+		\If{$p' \neq q'$ \And $(p',q') \not\in equiv$}
+		{
+			$equiv = equiv \cup \{(p',q')\}$\\
+			\uIf{\Not \Equivp{$p',q'$}}
+			{
+				\Return False
+			}
+			\Else
+			{
+				$path = path \setminus \{(p',q')\}$
+			}
+		}
+		Let $\varphi \in Out_p$ with $a \in \denotation{\varphi}$\\
+		Let $\psi \in Out_q$ with $a \in \denotation{\psi}$\\
+		$Out_p = Out_p \setminus \{ \varphi \} \cup \{\varphi \wedge \neg \psi\}$\\
+		$Out_q = Out_q \setminus \{ \psi\} \cup \{\psi \wedge \neg \varphi \}$
+	}
+	$equiv = equiv \cup \{(p,q)\}$\\
+	\Return True
+}
+\end{algorithm}
+
+This algorithm was adapted for SFAs from "Incremental DFA minimisation" by Almeida, Moreira, Reis. In particular, the only content really unique to the SFA algorithm is contained in \Equivp. Note that certain optimization steps have been left out for simplicity.
+
+\end{document}
