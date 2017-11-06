@@ -114,7 +114,7 @@ public class IntPred {
 				end_point = interval.right + 1;
 			}
 			if (i == intervals.size() - 1 && interval.right != null) { 
-				ret.add(ImmutablePair.of(interval.right + 1,  null));
+				ret.add(ImmutablePair.of(interval.right + 1,  (Integer)null));
 			}
 		}
 		return ImmutableList.copyOf(ret);
