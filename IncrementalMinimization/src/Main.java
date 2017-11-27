@@ -1,8 +1,10 @@
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 
 import org.apache.commons.lang3.NotImplementedException;
@@ -19,44 +21,116 @@ public class Main
 {
 	private static class EquivTest<P,S>
 	{
-		private SFA<P,S> aut;
-		private HashSet<Integer[]> equiv;
-		private HashSet<Integer[]> path;
+		private final SFA<P,S> aut;
+		private final BooleanAlgebra<P, S> ba;
+		private final DisjointSets<Integer> equivClasses;
 		
-		public EquivTest(SFA<P,S> aut, HashSet<Integer[]> equiv, HashSet<Integer[]> path)
+		private HashSet<List<Integer>> neq;
+		private HashSet<List<Integer>> equiv;
+		private HashSet<List<Integer>> path;
+		
+		public EquivTest(SFA<P,S> aut, BooleanAlgebra<P,S> ba, DisjointSets<Integer> equivClasses,
+				HashSet<List<Integer>> neq, HashSet<List<Integer>> equiv, HashSet<List<Integer>> path)
 		{
 			this.aut = aut;
+			this.ba = ba;
+			this.equivClasses = equivClasses;
+			this.neq = neq;
 			this.equiv = equiv;
 			this.path = path;
 		}
 		
-		public boolean isEquiv(Integer p, Integer q) throws NotImplementedException
+		private List<SFAInputMove<P,S>> findNonDisjointMoves(Collection<SFAInputMove<P, S>> outp, Collection<SFAInputMove<P, S>> outq) throws TimeoutException
 		{
-			//TODO
-			throw new NotImplementedException("Incremental Equivalence Not Implemented Yet");
+			//TODO: look into local minterm generation, can be more efficient?
+			assert(!outp.isEmpty() && !outq.isEmpty()); //TODO: remove assertions
+			SFAInputMove<P,S> pMove = outp.iterator().next();
+			P pGuard = pMove.guard;
+			for(SFAInputMove<P,S> qMove : outq)
+			{
+				P qGuard = qMove.guard;
+				P pqAnd = ba.MkAnd(pGuard, qGuard);
+				if(ba.IsSatisfiable(pqAnd))
+				{
+					return Arrays.asList(pMove,qMove);
+				}
+			}
+			return null;
 		}
 		
-		public HashSet<Integer[]> getEquiv()
+		public boolean isEquiv(Integer p, Integer q) throws TimeoutException
+		{
+			List<Integer> pair = Arrays.asList(p, q); //Should already be normalized
+			if (neq.contains(pair))
+			{
+				return false;
+			}
+			if (path.contains(pair))
+			{
+				return true;
+			}
+			path.add(pair);
+			Collection<SFAInputMove<P, S>> outp = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(p));
+			Collection<SFAInputMove<P, S>> outq = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(q));
+			while (!outp.isEmpty() && !outq.isEmpty())
+			{
+				List<SFAInputMove<P,S>> nonDisjointGuards = findNonDisjointMoves(outp,outq);
+				SFAInputMove<P,S> pMove = nonDisjointGuards.get(0);
+				SFAInputMove<P,S> qMove = nonDisjointGuards.get(1);
+				//note: we don't actually need to generate a witness, only need to know pMove,qMove are non-disjoint
+				Integer pNextClass = equivClasses.find(pMove.to);
+				Integer qNextClass = equivClasses.find(qMove.to);
+				List<Integer> nextPair = normalize(pNextClass, qNextClass);
+				if ( !pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
+				{
+					equiv.add(nextPair);
+					if(!isEquiv(pNextClass, qNextClass))
+					{
+						return false;
+					}
+					else
+					{
+						path.remove(nextPair);
+					}
+				}
+				outp.remove(pMove);
+				outq.remove(qMove);
+				P newPGuard = ba.MkAnd(pMove.guard, ba.MkNot(qMove.guard));
+				if (ba.IsSatisfiable(newPGuard))
+				{
+					outp.add(new SFAInputMove<P, S>(pMove.from, pMove.to, newPGuard));
+				}
+				P newQGuard = ba.MkAnd(qMove.guard, ba.MkNot(pMove.guard));
+				if (ba.IsSatisfiable(newQGuard))
+				{
+					outq.add(new SFAInputMove<P, S>(qMove.from, qMove.to, newQGuard));
+				}
+			}
+			equiv.add(pair);
+			return true;
+		}
+		
+		public HashSet<List<Integer>> getEquiv()
 		{
 			return equiv;
 		}
 		
-		public HashSet<Integer[]> getPath()
+		public HashSet<List<Integer>> getPath()
 		{
 			return path;
 		}
 	}
 	
-	private static Integer[] normalize(Integer p, Integer q)
+	private static List<Integer> normalize(Integer p, Integer q)
 	{
-		Integer[] pair;
+		List<Integer> pair;
 		if(p<q)
 		{
-			pair = new Integer[]{p,q};
+			pair = Arrays.asList(p,q);
 		}
 		else
 		{
-			pair = new Integer[]{q,p};
+			pair = Arrays.asList(q,p);
 		}
 		return pair;
 	}
@@ -67,14 +141,14 @@ public class Main
 		{
 			return SFA.getEmptySFA(ba);
 		}
-		aut = aut.determinize(ba).mkTotal(ba);
+		aut = aut.determinize(ba).mkTotal(ba); //TODO: normalizes?
 		DisjointSets<Integer> equivClasses = new DisjointSets<Integer>();
 		for(Integer q : aut.getStates())
 		{
 			equivClasses.make(q);
 		}
 		Integer num_pairs = aut.getStates().size() * aut.getStates().size(); //n^2 where n is # of states
-		HashSet<Integer[]> neq = new HashSet<Integer[]>(num_pairs, 1); //set is given initial capacity of n^2, won't exceed this
+		HashSet<List<Integer>> neq = new HashSet<List<Integer>>(num_pairs, 1); //set is given initial capacity of n^2, won't exceed this
 		for(Integer p : aut.getFinalStates())
 		{
 			for(Integer q : aut.getNonFinalStates())
@@ -91,10 +165,9 @@ public class Main
 				{
 					continue;
 				}
-				Integer[] pair = new Integer[]{p,q};
+				List<Integer> pair = Arrays.asList(p,q);
 				if(neq.contains(pair))
 				{
-					//Already know p,q not equivalent
 					continue;
 				}
 				else if(equivClasses.find(p) == equivClasses.find(q))
@@ -104,21 +177,21 @@ public class Main
 				}
 				
 				//TODO: look into efficiency of HashSet operations, ideally should be O(1) for searching, inserting, removing
-				HashSet<Integer[]> equiv = new HashSet<Integer[]>(num_pairs,1);
-				HashSet<Integer[]> path = new HashSet<Integer[]>(num_pairs,1);
-				EquivTest<P,S> pEquiv = new EquivTest<P,S>(aut, equiv, path);
+				HashSet<List<Integer>> equiv = new HashSet<List<Integer>>(num_pairs,1);
+				HashSet<List<Integer>> path = new HashSet<List<Integer>>(num_pairs,1);
+				EquivTest<P,S> pEquiv = new EquivTest<P,S>(aut, ba, equivClasses, neq, equiv, path);
 				if(pEquiv.isEquiv(p,q))
 				{
 					//p,q found equivalent. Other pairs may be found equivalent.
-					for(Integer[] equivPair : pEquiv.getEquiv())
+					for(List<Integer> equivPair : pEquiv.getEquiv())
 					{
-						equivClasses.union(equivPair[0], equivPair[1]);
+						equivClasses.union(equivPair.get(0), equivPair.get(1));
 					}
 				}
 				else
 				{
 					//p,q found non-equivalent. Other pairs may be found non-equivalent.
-					for(Integer[] pathPair : pEquiv.getPath())
+					for(List<Integer> pathPair : pEquiv.getPath())
 					{
 						neq.add(pathPair);
 					}
@@ -203,5 +276,7 @@ public class Main
 
 		
 		SFA<IntPred, Integer> minAut = incrementalMinimize(aut, ba);
+		System.out.println(minAut.getStates().size());
+		System.out.println(aut.minimize(ba).getStates().size());
 	}
 }
