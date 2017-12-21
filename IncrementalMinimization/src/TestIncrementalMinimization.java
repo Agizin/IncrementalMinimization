@@ -84,12 +84,6 @@ public class TestIncrementalMinimization {
 		Assert.assertTrue(incrMinAut.getStates().size() <= stdMinAut.getStates().size());
 		Assert.assertTrue(SFA.areEquivalent(incrMinAut, aut, ba));
 		Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
-		
-		//Note that because of how the symbolic automata library stores automata that it does not
-		//recognize as explicitly minimal, we may have a case where our minimum automata has
-		//less states than theirs (b/c the SFA does not store "sink states" AFAIK). So, to check that
-		//our SFA is minimal, we test if it is deterministic and has no more than the minimum
-		//SFA that the library computes
 	}
 	
 	@Test
