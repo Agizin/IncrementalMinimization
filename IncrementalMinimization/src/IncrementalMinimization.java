@@ -59,7 +59,7 @@ public class IncrementalMinimization
 		
 		public boolean isEquiv(Integer p, Integer q) throws TimeoutException
 		{
-			List<Integer> pair = Arrays.asList(p, q); //Should already be normalized
+			List<Integer> pair = normalize(p,q); //Should already be normalized
 			if (neq.contains(pair))
 			{
 				return false;
@@ -174,7 +174,6 @@ public class IncrementalMinimization
 					//Already found p,q equivalent
 					continue;
 				}
-				
 				//TODO: look into efficiency of HashSet operations, ideally should be O(1) for searching, inserting, removing
 				HashSet<List<Integer>> equiv = new HashSet<List<Integer>>(num_pairs,1);
 				HashSet<List<Integer>> path = new HashSet<List<Integer>>(num_pairs,1);
@@ -216,7 +215,8 @@ public class IncrementalMinimization
 			}
 		}
 		Integer newInitialState = equivClasses.find(aut.getInitialState());
-		return SFA.MkSFA(newTransitions, newInitialState, newFinalStates, ba);
+		SFA<P,S> minAut = SFA.MkSFA(newTransitions, newInitialState, newFinalStates, ba, false);
+		return minAut;
 	}
 	
 }

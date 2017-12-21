@@ -1,5 +1,10 @@
 import static org.junit.Assert.*;
 
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
@@ -9,16 +14,23 @@ import org.junit.Before;
 import org.junit.Test;
 import org.sat4j.specs.TimeoutException;
 
+import com.google.common.base.Stopwatch;
+
+import benchmark.SFAprovider;
+
 import theory.BooleanAlgebra;
+import theory.characters.CharPred;
+import theory.characters.StdCharPred;
 import theory.intervals.IntPred;
 import theory.intervals.IntegerSolver;
+import theory.intervals.UnaryCharIntervalSolver;
 import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
 import automata.sfa.SFAMove;
 
 public class TestIncrementalMinimization {
 
-	@Test
+	//@Test
 	public void testMyAut() throws TimeoutException {
 		//our algebra is constructed
 		IntegerSolver ba = new IntegerSolver();
@@ -80,6 +92,88 @@ public class TestIncrementalMinimization {
 		//SFA that the library computes
 	}
 	
-	//TODO: add more tests both for correctness and for speed
+	@Test
+	public void testCharPred() throws TimeoutException
+	{
+		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
+		CharPred alphaLower = StdCharPred.LOWER_ALPHA;
+		CharPred alphaAll = StdCharPred.ALPHA;
+		CharPred a = new CharPred('a');
+		CharPred num = StdCharPred.NUM;
+		CharPred comma = new CharPred(',');
+		
+		Collection<SFAMove<CharPred, Character>> transitions = new LinkedList<SFAMove<CharPred, Character>>();
+		transitions.add(new SFAInputMove<CharPred, Character>(0,0,a));
+		CharPred lowerNotA = ba.MkAnd(alphaLower, ba.MkNot(a));
+		transitions.add(new SFAInputMove<CharPred, Character>(0,1,lowerNotA));
+		transitions.add(new SFAInputMove<CharPred, Character>(1,0,alphaLower));
+		transitions.add(new SFAInputMove<CharPred, Character>(0,2,num));
+		transitions.add(new SFAInputMove<CharPred, Character>(1,2,num));
+		transitions.add(new SFAInputMove<CharPred, Character>(2,3,comma));
+		transitions.add(new SFAInputMove<CharPred, Character>(3,4,alphaLower));
+		transitions.add(new SFAInputMove<CharPred, Character>(3,1,num));
+		transitions.add(new SFAInputMove<CharPred, Character>(4,3,lowerNotA));
+		transitions.add(new SFAInputMove<CharPred, Character>(4,4,a));
+		transitions.add(new SFAInputMove<CharPred, Character>(4,0,num));
+		
+		SFA<CharPred, Character> aut = SFA.MkSFA(transitions, 0, Arrays.asList(3,4), ba);
+		aut = aut.determinize(ba).mkTotal(ba);
+		
+		SFA<CharPred, Character> incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+		SFA<CharPred, Character> stdMinAut = aut.minimize(ba);
+		Assert.assertTrue(incrMinAut.isDeterministic(ba));
+		Assert.assertTrue(SFA.areEquivalent(incrMinAut,stdMinAut,ba));
+		Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
+	}
+	
+	@Test
+	public void testRegEx() throws TimeoutException, IOException
+	{
+		//import list of regex. Heavily borrowed code from symbolic automata library
+		FileReader regexFile = new FileReader("src/pattern@75.txt");
+		BufferedReader read = new BufferedReader(regexFile);
+		ArrayList<String> regexList = new ArrayList<String>();
+		String line;
+		while(true)
+		{
+			line = read.readLine();
+			if (line == null)
+			{
+				break;
+			}
+			regexList.add(line);
+		}
+		//regex converted to SFAs and minimized
+		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
+		System.out.println(regexList.size());
+		ArrayList<String> messageList = new ArrayList<String>();
+		for (String regex : regexList)
+		{
+			SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
+			if (aut.stateCount() > 200) //Disjoint Set data structure not optimized for large state space, TODO optimize
+			{
+				continue;
+			}
+			long incrStart = System.nanoTime();
+			SFA<CharPred, Character> incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000);
+			long stdStart = System.nanoTime();
+			SFA<CharPred, Character> stdMinAut = aut.minimize(ba);
+			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000);
+			Assert.assertTrue(incrMinAut.isDeterministic(ba));
+			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
+			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
+			String initialStateCount = Integer.toString(aut.stateCount());
+			String finalStateCount = Integer.toString(stdMinAut.stateCount());
+			String message = "states: " + initialStateCount + " -> "  + finalStateCount + ", " 
+					+ "incremental time: " + Double.toString(incrTime) + ", Standard time: " 
+					+ Double.toString(stdTime) + " (microsecs)";
+			messageList.add(message);
+		}
+		for (String msg : messageList)
+		{
+			System.out.println(msg);
+		}
+	}
 
 }
