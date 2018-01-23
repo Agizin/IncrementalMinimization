@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedList;
 
 import org.junit.Assert;
@@ -30,7 +31,7 @@ import automata.sfa.SFAMove;
 
 public class TestIncrementalMinimization {
 
-	//@Test
+	@Test
 	public void testMyAut() throws TimeoutException {
 		//our algebra is constructed
 		IntegerSolver ba = new IntegerSolver();
@@ -97,24 +98,26 @@ public class TestIncrementalMinimization {
 		CharPred comma = new CharPred(',');
 		
 		Collection<SFAMove<CharPred, Character>> transitions = new LinkedList<SFAMove<CharPred, Character>>();
-		transitions.add(new SFAInputMove<CharPred, Character>(0,0,a));
+		transitions.add(new SFAInputMove<CharPred, Character>(9,9,a));
 		CharPred lowerNotA = ba.MkAnd(alphaLower, ba.MkNot(a));
-		transitions.add(new SFAInputMove<CharPred, Character>(0,1,lowerNotA));
-		transitions.add(new SFAInputMove<CharPred, Character>(1,0,alphaLower));
-		transitions.add(new SFAInputMove<CharPred, Character>(0,2,num));
+		transitions.add(new SFAInputMove<CharPred, Character>(9,1,lowerNotA));
+		transitions.add(new SFAInputMove<CharPred, Character>(1,9,alphaLower));
+		transitions.add(new SFAInputMove<CharPred, Character>(9,2,num));
 		transitions.add(new SFAInputMove<CharPred, Character>(1,2,num));
 		transitions.add(new SFAInputMove<CharPred, Character>(2,3,comma));
 		transitions.add(new SFAInputMove<CharPred, Character>(3,4,alphaLower));
 		transitions.add(new SFAInputMove<CharPred, Character>(3,1,num));
 		transitions.add(new SFAInputMove<CharPred, Character>(4,3,lowerNotA));
 		transitions.add(new SFAInputMove<CharPred, Character>(4,4,a));
-		transitions.add(new SFAInputMove<CharPred, Character>(4,0,num));
+		transitions.add(new SFAInputMove<CharPred, Character>(4,9,num));
 		
-		SFA<CharPred, Character> aut = SFA.MkSFA(transitions, 0, Arrays.asList(3,4), ba);
+		SFA<CharPred, Character> aut = SFA.MkSFA(transitions, 9, Arrays.asList(3,4), ba);
 		aut = aut.determinize(ba).mkTotal(ba);
 		
 		SFA<CharPred, Character> incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+		System.out.println(incrMinAut.getStates());
 		SFA<CharPred, Character> stdMinAut = aut.minimize(ba);
+		System.out.println(stdMinAut.getStates());
 		Assert.assertTrue(incrMinAut.isDeterministic(ba));
 		Assert.assertTrue(SFA.areEquivalent(incrMinAut,stdMinAut,ba));
 		Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
@@ -124,7 +127,7 @@ public class TestIncrementalMinimization {
 	public void testRegEx() throws TimeoutException, IOException
 	{
 		//import list of regex. Heavily borrowed code from symbolic automata library
-		FileReader regexFile = new FileReader("src/pattern@75.txt");
+		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -139,29 +142,67 @@ public class TestIncrementalMinimization {
 		}
 		//regex converted to SFAs and minimized
 		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
-		System.out.println(regexList.size());
+		//System.out.println(regexList.size());
 		ArrayList<String> messageList = new ArrayList<String>();
 		for (String regex : regexList)
 		{
 			SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
-			if (aut.stateCount() > 200) //Disjoint Set data structure not optimized for large state space, TODO optimize
+			
+			//incremental minimization
+			long incrStart = System.nanoTime();
+			SFA<CharPred, Character> incrMinAut;
+			try
 			{
+				incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+			}
+			catch(TimeoutException e)
+			{
+				System.out.println("Skipping because of Timeout Exception"); //TODO Debug
 				continue;
 			}
-			long incrStart = System.nanoTime();
-			SFA<CharPred, Character> incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+			catch(OutOfMemoryError e)
+			{
+				System.out.println("Skipping because out of heap space"); //TODO Debug
+				continue;
+			}
 			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000);
+			
+			//standard minimization
 			long stdStart = System.nanoTime();
-			SFA<CharPred, Character> stdMinAut = aut.minimize(ba);
+			SFA<CharPred, Character> stdMinAut;
+			stdMinAut = aut.minimize(ba);
 			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000);
+			
+			//moore minimization
+			long mooreStart = System.nanoTime();
+			SFA<CharPred, Character> mooreMinAut;
+			mooreMinAut = MooreMinimization.mooreMinimize(aut, ba);
+			Double mooreTime = ((double)(System.nanoTime() - mooreStart)/1000);
+			
 			Assert.assertTrue(incrMinAut.isDeterministic(ba));
 			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
 			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
+			Assert.assertTrue(SFA.areEquivalent(mooreMinAut, stdMinAut, ba));
+			Assert.assertTrue(mooreMinAut.stateCount() <= stdMinAut.stateCount());
+			
 			String initialStateCount = Integer.toString(aut.stateCount());
+			String transCount = Integer.toString(aut.getTransitionCount());
 			String finalStateCount = Integer.toString(stdMinAut.stateCount());
-			String message = "states: " + initialStateCount + " -> "  + finalStateCount + ", " 
-					+ "incremental time: " + Double.toString(incrTime) + ", Standard time: " 
-					+ Double.toString(stdTime) + " (microsecs)";
+			
+			HashSet<CharPred> predSet = new HashSet<CharPred>();
+			for(SFAInputMove<CharPred, Character> t : aut.getInputMovesFrom(aut.getStates()))
+			{
+				predSet.add(t.guard);
+			}
+			String predCount = Integer.toString(predSet.size());
+			ArrayList<CharPred> predList = new ArrayList<CharPred>(predSet);
+			String mintermCount = Integer.toString(ba.GetMinterms(predList).size());
+			
+			String message = "states: " + initialStateCount + " -> "  + finalStateCount
+					+ ", transition count: " + transCount + ", predicate count: " + predCount
+					+ ", Minterms: " + mintermCount + ", incremental time: " + Double.toString(incrTime) 
+					+ ", Standard time: " + Double.toString(stdTime) 
+					+ ", moore time: " + Double.toString(mooreTime) + " (microsecs)";
 			messageList.add(message);
 		}
 		for (String msg : messageList)
