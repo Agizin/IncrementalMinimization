@@ -3,9 +3,12 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.sat4j.specs.TimeoutException;
 
@@ -17,7 +20,7 @@ import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
 import automata.sfa.SFAMove;
 
-public class IncrementalMinimization
+public class IncrementalMinimization <P,S>
 {
 	@SuppressWarnings("rawtypes") // Extensions of Throwable class can not be generic
 	private static class TimeBudgetExceeded extends TimeoutException
@@ -41,23 +44,17 @@ public class IncrementalMinimization
 		}
 	}
 	
-	private static class EquivTest<P,S>
+	private class EquivTest
 	{
-		private final SFA<P,S> aut;
-		private final BooleanAlgebra<P, S> ba;
-		private final DisjointSets<Integer> equivClasses;
+		protected final DisjointSets<Integer> equivClasses;
 		
-		private HashSet<List<Integer>> neq;
-		private HashSet<List<Integer>> equiv;
-		private HashSet<List<Integer>> path;
+		protected HashSet<List<Integer>> equiv;
+		protected HashSet<List<Integer>> path;
 		
-		public EquivTest(SFA<P,S> aut, BooleanAlgebra<P,S> ba, DisjointSets<Integer> equivClasses,
-				HashSet<List<Integer>> neq, HashSet<List<Integer>> equiv, HashSet<List<Integer>> path)
+		public EquivTest(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
+				HashSet<List<Integer>> path)
 		{
-			this.aut = aut;
-			this.ba = ba;
 			this.equivClasses = equivClasses;
-			this.neq = neq;
 			this.equiv = equiv;
 			this.path = path;
 		}
@@ -84,7 +81,7 @@ public class IncrementalMinimization
 		public boolean isEquiv(Integer p, Integer q) throws TimeoutException
 		{
 			List<Integer> pair = normalize(p,q); //Should already be normalized
-			if (neq.contains(pair))
+			if (isKnownNotEqual(p,q))
 			{
 				return false;
 			}
@@ -144,95 +141,16 @@ public class IncrementalMinimization
 		}
 	}
 	
-	private static class EquivTestUpfront<P,S>
+	private class EquivTestUpfront extends EquivTest
 	{
-		private static class MintermTree<P,S>
-		{
-			private final BooleanAlgebra<P,S> ba;
-			
-			private P root_pred;
-			private MintermTree<P,S> left;
-			private MintermTree<P,S> right;
-			
-			public MintermTree(BooleanAlgebra<P,S> ba, P root_pred)
-			{
-				this.ba = ba;
-				this.root_pred = root_pred;
-				left = null;
-				right = null;
-			}
-			
-			public boolean isLeaf()
-			{
-				return (left == null); //no single children are ever added, so this is a sufficient check
-			}
-			
-			public void refine(P pred) throws TimeoutException
-			{
-				P predAnd = ba.MkAnd(root_pred, pred);
-				P predAndNot = ba.MkAnd(root_pred, ba.MkNot(pred));
-				if (ba.IsSatisfiable(predAnd) && ba.IsSatisfiable(predAndNot))
-				{
-					if (isLeaf())
-					{
-						this.left = new MintermTree(ba, predAnd);
-						this.right = new MintermTree(ba, predAndNot);
-					}
-					else
-					{
-						left.refine(pred);
-						right.refine(pred);
-					}
-				}
-			}
-			
-			public ArrayList<P> getMinterms()
-			{
-				ArrayList<P> minterms = new ArrayList<P>();
-				if (isLeaf())
-				{
-					minterms.add(root_pred);
-				}
-				else
-				{
-					minterms.addAll(left.getMinterms());
-					minterms.addAll(right.getMinterms());
-				}
-				return minterms;
-			}
-			
-		}
 		
-		public static <P,S> ArrayList<P> generate_minterms(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
-		{	
-			MintermTree<P,S> tree = new MintermTree(ba, ba.True());
-			for(SFAInputMove<P,S> p : aut.getInputMovesFrom(aut.getStates()))
-			{
-				tree.refine(p.guard);
-			}
-			return tree.getMinterms();
-		}
-		
-		private final SFA<P,S> aut;
-		private final BooleanAlgebra<P, S> ba;
-		private final DisjointSets<Integer> equivClasses;
 		private final ArrayList<P> minterms;
 		
-		private HashSet<List<Integer>> neq;
-		private HashSet<List<Integer>> equiv;
-		private HashSet<List<Integer>> path;
-		
-		public EquivTestUpfront(SFA<P,S> aut, BooleanAlgebra<P,S> ba, DisjointSets<Integer> equivClasses,
-				ArrayList<P> minterms, HashSet<List<Integer>> neq, HashSet<List<Integer>> equiv, 
-				HashSet<List<Integer>> path)
+		public EquivTestUpfront(DisjointSets<Integer> equivClasses, ArrayList<P> minterms, 
+				HashSet<List<Integer>> equiv, HashSet<List<Integer>> path)
 		{
-			this.aut = aut;
-			this.ba = ba;
-			this.equivClasses = equivClasses;
+			super(equivClasses, equiv, path);
 			this.minterms = minterms;
-			this.neq = neq;
-			this.equiv = equiv;
-			this.path = path;
 		}
 		
 		private Integer mintermTransition(Integer state, P minterm) throws TimeoutException
@@ -254,7 +172,7 @@ public class IncrementalMinimization
 		public boolean isEquiv(Integer p, Integer q) throws TimeoutException, TimeBudgetExceeded
 		{
 			List<Integer> pair = normalize(p,q); //Should already be normalized
-			if (neq.contains(pair))
+			if (isKnownNotEqual(p,q))
 			{
 				return false;
 			}
@@ -285,172 +203,6 @@ public class IncrementalMinimization
 			return true;
 		}
 		
-		public HashSet<List<Integer>> getEquiv()
-		{
-			return equiv;
-		}
-		
-		public HashSet<List<Integer>> getPath()
-		{
-			return path;
-		}
-	}
-	
-	private static List<Integer> normalize(Integer p, Integer q)
-	{
-		List<Integer> pair;
-		if(p<q)
-		{
-			pair = Arrays.asList(p,q);
-		}
-		else
-		{
-			pair = Arrays.asList(q,p);
-		}
-		return pair;
-	}
-	
-	private static <P,S> SFA<P,S> mergeSFAStates(DisjointSets<Integer> equivClasses, 
-			SFA<P,S> originalAut, BooleanAlgebra<P,S> ba) throws TimeoutException
-	{
-		//new SFA created with minimum states
-		HashMap<Integer, HashSet<Integer>> classes = equivClasses.getSets();
-		Set<Integer> newStates = classes.keySet();
-		Collection<SFAMove<P, S>> newTransitions = new LinkedList<SFAMove<P, S>>();
-		Collection<Integer> newFinalStates = new HashSet<Integer>();
-		for (Integer p : newStates)
-		{
-			for (SFAInputMove<P,S> t : originalAut.getInputMovesFrom(classes.get(p)))
-			{
-				newTransitions.add(new SFAInputMove<P,S>(p, equivClasses.find(t.to), t.guard));
-			}
-			if(originalAut.isFinalState(p))
-			{
-				newFinalStates.add(p);
-			}
-		}
-		Integer newInitialState = equivClasses.find(originalAut.getInitialState());
-		SFA<P,S> minAut = SFA.MkSFA(newTransitions, newInitialState, newFinalStates, ba, false);
-		return minAut;
-	}
-	
-	private static <P, S> void timeCheck(SFA<P,S> aut, BooleanAlgebra<P,S> ba, 
-			DisjointSets<Integer> equivClasses, long endTime) throws TimeoutException
-	{
-		if(System.nanoTime() > endTime)
-		{
-			//Time Budget exceeded
-			SFA<P,S> curAut = mergeSFAStates(equivClasses, aut, ba);
-			double exceeded = (new Double(System.nanoTime()-endTime))/1000000;
-			System.out.println(String.format("Exceeded by %f ms", exceeded));
-			throw new TimeBudgetExceeded(curAut);
-			/* Current time budget implementation intended to test % of automata minimization given
-			 * a set period of time. However, it does not necessarily return this mostly minimized
-			 * automata exactly after the budget is met (this is deinitiely possible, just not with
-			 * present implementation).
-			 */
-		}
-	}
-	
-	public static <P, S> SFA<P, S> minimize(SFA<P,S> aut, BooleanAlgebra<P,S>  ba, long budget, boolean upfront) 
-			throws TimeoutException
-	{
-		
-		long endTime = System.nanoTime() + budget;
-		if (endTime < 0) //indicates overflow
-		{
-			endTime = Long.MAX_VALUE;
-		}
-		if(aut.isEmpty())
-		{
-			return SFA.getEmptySFA(ba);
-		}
-		if (!aut.isDeterministic())
-		{
-			aut = aut.determinize(ba);
-		}
-		aut = aut.mkTotal(ba);
-		ArrayList<P> upfront_minterms = null;
-		if(upfront)
-		{
-			upfront_minterms = EquivTestUpfront.generate_minterms(aut, ba);
-		}
-		int num_pairs = aut.getStates().size() * aut.getStates().size(); //n^2 where n is # of states
-		DisjointSets<Integer> equivClasses = new DisjointSets<Integer>();
-		for(Integer q : aut.getStates())
-		{
-			equivClasses.make(q);
-		}
-		HashSet<List<Integer>> neq = new HashSet<List<Integer>>(num_pairs, 0.9f); //set is given initial capacity of n^2, won't exceed this
-		for(Integer p : aut.getFinalStates())
-		{
-			for(Integer q : aut.getNonFinalStates())
-			{
-				neq.add(normalize(p,q));
-			}
-		}
-		for(Integer p : aut.getStates())
-		{
-			for(Integer q : aut.getStates())
-			{
-				if(q <= p)
-				{
-					continue;
-				}
-				List<Integer> pair = Arrays.asList(p,q);
-				if(neq.contains(pair))
-				{
-					continue;
-				}
-				else if(equivClasses.find(p) == equivClasses.find(q))
-				{
-					//Already found p,q equivalent
-					continue;
-				}
-				//TODO: look into efficiency of HashSet operations, ideally should be O(1) for searching, inserting, removing
-				HashSet<List<Integer>> equiv = new HashSet<List<Integer>>(num_pairs,0.9f);
-				HashSet<List<Integer>> path = new HashSet<List<Integer>>(num_pairs,0.9f);
-				timeCheck(aut, ba, equivClasses, endTime);
-				boolean isequiv;
-				if(!upfront)
-				{
-					EquivTest<P,S> pEquiv = new EquivTest<P,S>(aut, ba, equivClasses, neq, equiv, path);
-					isequiv = pEquiv.isEquiv(p, q);
-					equiv = pEquiv.getEquiv();
-					path = pEquiv.getPath();
-				}
-				else
-				{
-					EquivTestUpfront<P, S> pEquivUpfront = new EquivTestUpfront<P,S>(aut, ba, equivClasses,
-							upfront_minterms, neq, equiv, path);
-					isequiv = pEquivUpfront.isEquiv(p,q);
-					equiv = pEquivUpfront.getEquiv();
-					path = pEquivUpfront.getPath();
-				}
-				if(isequiv)
-				{
-					//p,q found equivalent. Other pairs may be found equivalent.
-					for(List<Integer> equivPair : equiv)
-					{
-						equivClasses.union(equivPair.get(0), equivPair.get(1));
-						//equivClasses.union(equivPair.get(0), equivPair.get(1));
-					}
-					timeCheck(aut, ba, equivClasses, endTime);
-					//after equiv merging for soft time budget?
-				}
-				else
-				{
-					timeCheck(aut, ba, equivClasses, endTime);
-					//p,q found non-equivalent. Other pairs may be found non-equivalent.
-					for(List<Integer> pathPair : path)
-					{
-						neq.add(pathPair);
-					}
-				}
-			}
-		}
-		
-		return mergeSFAStates(equivClasses, aut, ba);
 	}
 	
 	public static <P,S> SFA<P,S> incrementalMinimize(SFA<P,S> aut, BooleanAlgebra<P,S> ba, long budget, boolean upfront) 
@@ -458,7 +210,8 @@ public class IncrementalMinimization
 	{
 		try
 		{
-			return minimize(aut, ba, budget, upfront);
+			IncrementalMinimization<P,S> min = new IncrementalMinimization<P,S>(aut, ba);
+			return min.minimize(budget, upfront);
 		}
 		catch(TimeBudgetExceeded e)
 		{
@@ -475,6 +228,253 @@ public class IncrementalMinimization
 	{
 		return incrementalMinimize(aut, ba, Long.MAX_VALUE, false); //Default time budget 200+ years (i.e. there is none)
 	}
-	//TODO: refactor, make class instantiable with above as constructors.
+	
+	private final SFA<P,S> aut;
+	private final BooleanAlgebra<P,S> ba;
+	private final int num_pairs;
+	
+	private HashSet<List<Integer>> neq;
+	private LinkedHashMap<Integer, Integer> distanceToFinalMap;
+	
+	public IncrementalMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
+	{
+		if (!aut.isDeterministic())
+		{
+			aut = aut.determinize(ba);
+		}
+		this.aut = aut.mkTotal(ba);
+		this.ba = ba;
+		this.num_pairs = aut.getStates().size() * aut.getStates().size();
+		this.neq = new HashSet<List<Integer>>(num_pairs, 0.9f); //won't exceed initial capacity
+		this.distanceToFinalMap = generateDistanceToFinalMap();
+	}
+	
+	private LinkedHashMap<Integer, Integer> generateDistanceToFinalMap()
+	{
+		class StateInfo
+		{
+			public final Integer stateID;
+			public final Integer distanceToFinal;
+			
+			public StateInfo(Integer stateID, Integer distanceToFinal)
+			{
+				this.stateID = stateID;
+				this.distanceToFinal = distanceToFinal;
+			}
+			
+			public String toString()
+			{
+				return String.format("(%d, %d)", stateID, distanceToFinal);
+			}
+		}
+		
+		LinkedHashMap<Integer, Integer> distanceMap = new LinkedHashMap<Integer, Integer>();
+		HashSet<Integer> visitedStates = new HashSet<Integer>();
+		Queue<StateInfo> stateQueue = new LinkedList<StateInfo>();
+		
+		for(Integer finalState : aut.getFinalStates())
+		{
+			stateQueue.add(new StateInfo(finalState, 0));
+			visitedStates.add(finalState);
+		}
+		while(!stateQueue.isEmpty())
+		{
+			StateInfo s = stateQueue.poll();
+			distanceMap.put(s.stateID, s.distanceToFinal);
+			Integer nextDistance = s.distanceToFinal + 1;
+			for (SFAInputMove<P,S> t : aut.getInputMovesTo(s.stateID))
+			{
+				Integer nextState = t.from;
+				if(!visitedStates.contains(nextState))
+				{
+					stateQueue.add(new StateInfo(nextState, nextDistance));
+					visitedStates.add(nextState);
+				}
+			}
+		}
+		
+		for(Integer state : aut.getNonFinalStates())
+		{
+			if (!visitedStates.contains(state))
+			{
+				assert(!distanceMap.containsKey(state)); //TODO: remove this
+				distanceMap.put(state, null); //indicates sink state
+			}
+		}
+		
+		return distanceMap;
+	}
+	
+	private List<Integer> normalize(Integer p, Integer q)
+	{
+		List<Integer> pair;
+		if(p<q)
+		{
+			pair = Arrays.asList(p,q);
+		}
+		else
+		{
+			pair = Arrays.asList(q,p);
+		}
+		return pair;
+	}
+	
+	private boolean isSinkState(Integer p)
+	{
+		return distanceToFinalMap.get(p) == null;
+	}
+	
+	private boolean isKnownNotEqual(Integer p, Integer q)
+	{
+		if (neq.contains(normalize(p,q)))
+		{
+			return true;
+		}
+		else if (isSinkState(p))
+		{
+			if(isSinkState(q))
+			{
+				return false;
+			}
+			else
+			{
+				neq.add(normalize(p,q));
+				return true;
+			}
+		}
+		else if (!distanceToFinalMap.get(p).equals(distanceToFinalMap.get(q)))
+		{
+			neq.add(normalize(p,q));
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	
+	private SFA<P,S> mergeSFAStates(DisjointSets<Integer> equivClasses) throws TimeoutException
+	{
+		//new SFA created with minimum states
+		HashMap<Integer, HashSet<Integer>> classes = equivClasses.getSets();
+		Set<Integer> newStates = classes.keySet();
+		Collection<SFAMove<P, S>> newTransitions = new LinkedList<SFAMove<P, S>>();
+		Collection<Integer> newFinalStates = new HashSet<Integer>();
+		for (Integer p : newStates)
+		{
+			for (SFAInputMove<P,S> t : aut.getInputMovesFrom(classes.get(p)))
+			{
+				newTransitions.add(new SFAInputMove<P,S>(p, equivClasses.find(t.to), t.guard));
+			}
+			if(aut.isFinalState(p))
+			{
+				newFinalStates.add(p);
+			}
+		}
+		Integer newInitialState = equivClasses.find(aut.getInitialState());
+		SFA<P,S> minAut = SFA.MkSFA(newTransitions, newInitialState, newFinalStates, ba, false);
+		return minAut;
+	}
+	
+	private void timeCheck(long endTime, DisjointSets<Integer> equivClasses) throws TimeoutException
+	{
+		if(System.nanoTime() > endTime)
+		{
+			//Time Budget exceeded
+			SFA<P,S> curAut = mergeSFAStates(equivClasses);
+			double exceeded = (new Double(System.nanoTime()-endTime))/1000000;
+			System.out.println(String.format("Exceeded by %f ms", exceeded));
+			throw new TimeBudgetExceeded(curAut);
+			/* Current time budget implementation intended to test % of automata minimization given
+			 * a set period of time. However, it does not necessarily return this mostly minimized
+			 * automata exactly after the budget is met (this is deinitiely possible, just not with
+			 * present implementation).
+			 */
+		}
+	}
+	
+	public SFA<P, S> minimize(long budget, boolean upfront) 
+			throws TimeoutException
+	{
+		long endTime = System.nanoTime() + budget;
+		if (endTime < 0) //indicates overflow
+		{
+			endTime = Long.MAX_VALUE;
+		}
+		if(aut.isEmpty())
+		{
+			return SFA.getEmptySFA(ba);
+		}
+		ArrayList<P> upfront_minterms = null;
+		if(upfront)
+		{
+			upfront_minterms = MintermTree.generate_minterms(aut, ba);
+		}
+		DisjointSets<Integer> equivClasses = new DisjointSets<Integer>();
+		for(Integer q : aut.getStates())
+		{
+			equivClasses.make(q);
+		}
+		for(Integer p : distanceToFinalMap.keySet())
+		{
+			for(Integer q : distanceToFinalMap.keySet())
+			{
+				if(q <= p)
+				{
+					continue;
+				}
+				if(isKnownNotEqual(p,q))
+				{
+					continue;
+				}
+				else if(equivClasses.find(p) == equivClasses.find(q))
+				{
+					//Already found p,q equivalent
+					continue;
+				}
+				//TODO: look into efficiency of HashSet operations, ideally should be O(1) for searching, inserting, removing
+				HashSet<List<Integer>> equiv = new HashSet<List<Integer>>(num_pairs,0.9f);
+				HashSet<List<Integer>> path = new HashSet<List<Integer>>(num_pairs,0.9f);
+				timeCheck(endTime, equivClasses);
+				EquivTest pEquiv;
+				if(!upfront)
+				{
+					pEquiv = new EquivTest(equivClasses, equiv, path);
+
+				}
+				else
+				{
+					pEquiv = new EquivTestUpfront(equivClasses, upfront_minterms, equiv, path);
+				}
+				boolean isequiv = pEquiv.isEquiv(p, q);
+				equiv = pEquiv.getEquiv();
+				path = pEquiv.getPath();
+				if(isequiv)
+				{
+					//p,q found equivalent. Other pairs may be found equivalent.
+					for(List<Integer> equivPair : equiv)
+					{
+						equivClasses.union(equivPair.get(0), equivPair.get(1));
+						//equivClasses.union(equivPair.get(0), equivPair.get(1));
+					}
+					timeCheck(endTime, equivClasses);
+					//after equiv merging for soft time budget?
+				}
+				else
+				{
+					timeCheck(endTime, equivClasses);
+					//p,q found non-equivalent. Other pairs may be found non-equivalent.
+					for(List<Integer> pathPair : path)
+					{
+						neq.add(pathPair);
+					}
+				}
+			}
+		}
+		
+		return mergeSFAStates(equivClasses);
+	}
+	
+	
 	
 }

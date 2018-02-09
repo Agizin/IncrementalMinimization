@@ -138,7 +138,7 @@ public class TestIncrementalMinimization {
 		System.out.println("========================");
 		
 		//import list of regex. Heavily borrowed code from symbolic automata library
-		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		FileReader regexFile = new FileReader("src/pattern@75.txt");
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -175,6 +175,13 @@ public class TestIncrementalMinimization {
 			}
 			System.out.println("Determinized");
 			
+			//standard minimization
+			long stdStart = System.nanoTime();
+			SFA<CharPred, Character> stdMinAut;
+			stdMinAut = aut.minimize(ba);
+			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000);
+			System.out.println("Standard minimized.");
+			
 			//incremental minimization
 			long incrStart = System.nanoTime();
 			SFA<CharPred, Character> incrMinAut;
@@ -193,7 +200,11 @@ public class TestIncrementalMinimization {
 				continue;
 			}
 			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000);
+			Assert.assertTrue(incrMinAut.isDeterministic(ba));
+			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
+			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
 			System.out.println("Incremental minimized.");
+			
 			
 			//DFAized incremental minimization
 			long incrDFAStart = System.nanoTime();
@@ -213,41 +224,31 @@ public class TestIncrementalMinimization {
 				continue;
 			}
 			Double upfrontTime = ((double)(System.nanoTime() - incrDFAStart)/1000);
+			Assert.assertTrue(upfrontMinAut.stateCount() <= stdMinAut.stateCount());
+			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
+			try
+			{
+				Assert.assertTrue(upfrontMinAut.stateCount() == incrMinAut.stateCount());
+			}
+			catch(AssertionError e)
+			{
+				System.out.println(upfrontMinAut.stateCount());
+				System.out.println(incrMinAut.stateCount());
+			}
+			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
 			System.out.println("Upfront Incremental minimized.");
 			
-			//standard minimization
-			long stdStart = System.nanoTime();
-			SFA<CharPred, Character> stdMinAut;
-			stdMinAut = aut.minimize(ba);
-			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000);
-			System.out.println("Standard minimized.");
 			
 			//moore minimization
 			long mooreStart = System.nanoTime();
 			SFA<CharPred, Character> mooreMinAut;
 			mooreMinAut = MooreMinimization.mooreMinimize(aut, ba);
 			Double mooreTime = ((double)(System.nanoTime() - mooreStart)/1000);
-			System.out.println("Moore minimized.");
-			
-			Assert.assertTrue(incrMinAut.isDeterministic(ba));
-			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
-			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
 			Assert.assertTrue(SFA.areEquivalent(mooreMinAut, stdMinAut, ba));
 			Assert.assertTrue(mooreMinAut.stateCount() <= stdMinAut.stateCount());
-			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
-			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
-			try
-			{
-				Assert.assertTrue(upfrontMinAut.stateCount() == incrMinAut.stateCount());
-			}
-			catch (AssertionError e)
-			{
-				System.out.println(stdMinAut.stateCount());
-				System.out.println(incrMinAut.stateCount());
-				System.out.println(upfrontMinAut.stateCount());
-			}
-			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
+			System.out.println("Moore minimized.");
 			
+	
 			String initialStateCount = Integer.toString(aut.stateCount());
 			String transCount = Integer.toString(aut.getTransitionCount());
 			String finalStateCount = Integer.toString(stdMinAut.stateCount());
@@ -289,7 +290,7 @@ public class TestIncrementalMinimization {
 		System.out.println("=========================");
 		
 		//import list of regex
-		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		FileReader regexFile = new FileReader("src/pattern@75.txt");
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
