@@ -1,14 +1,14 @@
 import matplotlib.pyplot as pyplot
 import sys
 
-cutoff = 500
 xAxis = "Number of States"
 yAxis = "Average Minimization Time (ns)"
 title = "Comparison of SFA Minimization Algorithms"
 
 testsfile = sys.argv[1]
 xIndex = int(sys.argv[2])
-graph_indices = [int(i) for i in sys.argv[3:]]
+graph_indices = [int(i) for i in sys.argv[3:-1]]
+cutoff = int(sys.argv[-1])
 
 def toNum(s):
     if s.isdigit():
@@ -49,9 +49,4 @@ pyplot.xlabel(xAxis)
 pyplot.ylabel(yAxis)
 pyplot.title(title)
 pyplot.savefig("graph.png", dpi=600)
-
-
-
-
-
 

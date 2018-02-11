@@ -280,7 +280,7 @@ public class TestIncrementalMinimization {
 		writer.close();
 	}
 	
-	//@Test
+	@Test
 	public void testBudget() throws TimeoutException, IOException
 	{
 		//Similar to Regex test, but incremental minimization only given as long as 

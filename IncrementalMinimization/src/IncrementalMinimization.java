@@ -1,6 +1,7 @@
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -9,6 +10,10 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.ToDoubleFunction;
+import java.util.function.ToIntFunction;
+import java.util.function.ToLongFunction;
 
 import org.sat4j.specs.TimeoutException;
 
@@ -205,6 +210,28 @@ public class IncrementalMinimization <P,S>
 		
 	}
 	
+	private class StateComparator implements Comparator<Integer>
+	{
+	
+		public int compare(Integer a, Integer b)
+		{
+			if (a == b)
+			{
+				return 0;
+			}
+			int diff = distanceToFinalMap.get(a) - distanceToFinalMap.get(b);
+			if (diff == 0)
+			{
+				return a - b;
+			}
+			else
+			{
+				return diff;
+			}
+		}
+		
+	}
+	
 	public static <P,S> SFA<P,S> incrementalMinimize(SFA<P,S> aut, BooleanAlgebra<P,S> ba, long budget, boolean upfront) 
 			throws TimeoutException
 	{
@@ -235,6 +262,7 @@ public class IncrementalMinimization <P,S>
 	
 	private HashSet<List<Integer>> neq;
 	private LinkedHashMap<Integer, Integer> distanceToFinalMap;
+	private StateComparator stateComp;
 	
 	public IncrementalMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
 	{
@@ -247,6 +275,7 @@ public class IncrementalMinimization <P,S>
 		this.num_pairs = aut.getStates().size() * aut.getStates().size();
 		this.neq = new HashSet<List<Integer>>(num_pairs, 0.9f); //won't exceed initial capacity
 		this.distanceToFinalMap = generateDistanceToFinalMap();
+		this.stateComp = new StateComparator();
 	}
 	
 	private LinkedHashMap<Integer, Integer> generateDistanceToFinalMap()
@@ -298,7 +327,7 @@ public class IncrementalMinimization <P,S>
 			if (!visitedStates.contains(state))
 			{
 				assert(!distanceMap.containsKey(state)); //TODO: remove this
-				distanceMap.put(state, null); //indicates sink state
+				distanceMap.put(state, Integer.MAX_VALUE); //indicates sink state
 			}
 		}
 		
@@ -308,7 +337,7 @@ public class IncrementalMinimization <P,S>
 	private List<Integer> normalize(Integer p, Integer q)
 	{
 		List<Integer> pair;
-		if(p<q)
+		if(stateComp.compare(p, q) < 0)
 		{
 			pair = Arrays.asList(p,q);
 		}
@@ -321,7 +350,7 @@ public class IncrementalMinimization <P,S>
 	
 	private boolean isSinkState(Integer p)
 	{
-		return distanceToFinalMap.get(p) == null;
+		return distanceToFinalMap.get(p) == Integer.MAX_VALUE;
 	}
 	
 	private boolean isKnownNotEqual(Integer p, Integer q)
@@ -329,18 +358,6 @@ public class IncrementalMinimization <P,S>
 		if (neq.contains(normalize(p,q)))
 		{
 			return true;
-		}
-		else if (isSinkState(p))
-		{
-			if(isSinkState(q))
-			{
-				return false;
-			}
-			else
-			{
-				neq.add(normalize(p,q));
-				return true;
-			}
 		}
 		else if (!distanceToFinalMap.get(p).equals(distanceToFinalMap.get(q)))
 		{
@@ -419,9 +436,16 @@ public class IncrementalMinimization <P,S>
 		{
 			for(Integer q : distanceToFinalMap.keySet())
 			{
-				if(q <= p)
+				if(stateComp.compare(q,p) <= 0)
 				{
-					continue;
+					if (distanceToFinalMap.get(p) < distanceToFinalMap.get(q))
+					{
+						break; //All later qs will be inequivalent
+					}
+					else
+					{
+						continue;
+					}
 				}
 				if(isKnownNotEqual(p,q))
 				{
