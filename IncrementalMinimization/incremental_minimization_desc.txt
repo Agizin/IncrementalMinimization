@@ -1,4 +1,0 @@
-Incremental Minimization of Symbolic Finite Automata
-
-Symbolic finite automata (SFA) are generalizations of classical finite automata. Whereas the transitions of classical automata are defined by characters from the automata's alphabet, the transitions of symbolic automata are defined by predicates over a boolean algebra on the alphabet. This allows for SFAs to be efficiently constructed over extremely large, and possibly infinite, alphabets. In this paper, I will present an algorithm for the incremental minimization of deterministic SFAs based on an existing incremental algorithm for DFA minimization. Although more efficient algorithms exist for SFA minimization, this algorithm is designed to minimize the automata incrementally so that the minimization can be stopped at any time and computations can be run on the partially minimized SFA.
-
