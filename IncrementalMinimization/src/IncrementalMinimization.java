@@ -215,10 +215,6 @@ public class IncrementalMinimization <P,S>
 	
 		public int compare(Integer a, Integer b)
 		{
-			if (a == b)
-			{
-				return 0;
-			}
 			int diff = distanceToFinalMap.get(a) - distanceToFinalMap.get(b);
 			if (diff == 0)
 			{

@@ -19,15 +19,16 @@ def toNum(s):
 def mergeData(data, index):
     data.sort(key = lambda x: x[index])
     new_data = []
-    count = 0
+    count = 1
     for row in data:
         if new_data and new_data[-1][index] == row[index]:
             old_row = new_data[-1]
+	    count += 1
             for i in range(0, len(old_row)):
                 if i != index:
                     old_row[i] += (row[i] - old_row[i])/float(count) #running average
         else:
-            count += 1
+            count = 1
             new_data.append(row)
     return new_data
         
