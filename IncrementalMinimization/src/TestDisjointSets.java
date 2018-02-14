@@ -35,10 +35,40 @@ public class TestDisjointSets {
 		Assert.assertEquals(sets.find(1), sets.find(2));
 		Assert.assertEquals(new Integer(1),sets.find(1));
 		Assert.assertEquals(new Integer(1),sets.find(2));
+		sets.union(4, 5);
+		sets.union(2, 4);
+		Assert.assertEquals(sets.find(1), sets.find(5));
+		Assert.assertFalse(sets.find(1).equals(sets.find(7)));
+	}
+	
+	@Test
+	public void testSize()
+	{
+		initialize();
+		Assert.assertEquals(10, sets.size());
+		sets.union(1, 2);
+		Assert.assertEquals(9, sets.size());
+		sets.union(4, 5);
+		sets.union(2, 4);
+		Assert.assertEquals(7, sets.size());
+	}
+	
+	@Test
+	public void testCopy()
+	{
+		initialize();
+		sets.union(1, 2);
 		sets.union(3, 4);
-		sets.union(2, 3);
-		Assert.assertEquals(sets.find(1), sets.find(4));
-		Assert.assertFalse(sets.find(1).equals(sets.find(5)));
+		sets.union(5, 4);
+		DisjointSets<Integer> newSets = new DisjointSets<Integer>(sets);
+		Integer oneIden = newSets.find(1);
+		Assert.assertTrue(oneIden == 2 || oneIden == 1);
+		Integer fiveIden = newSets.find(5);
+		Assert.assertTrue(fiveIden == 3 || fiveIden == 4 || fiveIden == 5);
+		for (Integer i = 6; i < 10; i++)
+		{
+			Assert.assertEquals(sets.find(i), newSets.find(i));
+		}
 	}
 
 }

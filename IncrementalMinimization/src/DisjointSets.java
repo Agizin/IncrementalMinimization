@@ -14,20 +14,45 @@ public class DisjointSets <E>
 
 	private HashMap<E, E> parentMap;
 	private HashMap<E, Integer> rankMap;
+	private int size;
 	
 	public DisjointSets()
 	{
 		parentMap = new HashMap<E, E>();
 		rankMap = new HashMap<E, Integer>();
+		size = 0;
 	}
 	
 	public DisjointSets(Collection<E> identifiers)
 	{
 		parentMap = new HashMap<E, E>();
 		rankMap = new HashMap<E, Integer>();
+		size=0;
 		for(E identifier : identifiers)
 		{
 			make(identifier);
+			size++;
+		}
+	}
+	
+	public DisjointSets(DisjointSets<E> disjointSets)
+	{
+		parentMap = new HashMap<E,E>();
+		rankMap = new HashMap<E, Integer>();
+		size=0;
+		HashMap<E, HashSet<E>> sets = disjointSets.getSets();
+		for (E iden : sets.keySet())
+		{
+			make(iden);
+			HashSet<E> set = sets.get(iden);
+			for (E elem : set)
+			{
+				if (elem != iden)
+				{
+					make(elem);
+				}
+				union(elem, iden);
+			}
 		}
 	}
 	
@@ -37,6 +62,7 @@ public class DisjointSets <E>
 		{
 			parentMap.put(identifier, null);
 			rankMap.put(identifier, 1);
+			size++;
 		}
 		else
 		{
@@ -97,6 +123,7 @@ public class DisjointSets <E>
 				union_iden = iden2;
 			}
 		}
+		size--;
 		return union_iden;
 	}
 	
@@ -118,6 +145,11 @@ public class DisjointSets <E>
 			}
 		}
 		return sets;
+	}
+	
+	public int size()
+	{
+		return size;
 	}
 	
 	public String toString()

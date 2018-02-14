@@ -234,7 +234,7 @@ public class IncrementalMinimization <P,S>
 		try
 		{
 			IncrementalMinimization<P,S> min = new IncrementalMinimization<P,S>(aut, ba);
-			return min.minimize(budget, upfront);
+			return min.minimize(budget, upfront, false);
 		}
 		catch(TimeBudgetExceeded e)
 		{
@@ -259,6 +259,9 @@ public class IncrementalMinimization <P,S>
 	private HashSet<List<Integer>> neq;
 	private LinkedHashMap<Integer, Integer> distanceToFinalMap;
 	private StateComparator stateComp;
+	private Long startTime;
+	private LinkedHashMap<Long, Integer> record; //maps time stamps to number of states
+	private Long singularRecord = null;
 	
 	public IncrementalMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
 	{
@@ -272,6 +275,8 @@ public class IncrementalMinimization <P,S>
 		this.neq = new HashSet<List<Integer>>(num_pairs, 0.9f); //won't exceed initial capacity
 		this.distanceToFinalMap = generateDistanceToFinalMap();
 		this.stateComp = new StateComparator();
+		this.startTime = null;
+		this.record = new LinkedHashMap<Long, Integer>();
 	}
 	
 	private LinkedHashMap<Integer, Integer> generateDistanceToFinalMap()
@@ -351,13 +356,14 @@ public class IncrementalMinimization <P,S>
 	
 	private boolean isKnownNotEqual(Integer p, Integer q)
 	{
-		if (neq.contains(normalize(p,q)))
+		List<Integer> normalizedPair = normalize(p,q);
+		if (neq.contains(normalizedPair))
 		{
 			return true;
 		}
 		else if (!distanceToFinalMap.get(p).equals(distanceToFinalMap.get(q)))
 		{
-			neq.add(normalize(p,q));
+			neq.add(normalizedPair);
 			return true;
 		}
 		else
@@ -389,6 +395,12 @@ public class IncrementalMinimization <P,S>
 		return minAut;
 	}
 	
+	private void updateRecord(DisjointSets<Integer> equivClasses)
+	{
+		Long time = System.nanoTime();
+		record.put(time, equivClasses.getSets().size());
+	}
+	
 	private void timeCheck(long endTime, DisjointSets<Integer> equivClasses) throws TimeoutException
 	{
 		if(System.nanoTime() > endTime)
@@ -406,16 +418,21 @@ public class IncrementalMinimization <P,S>
 		}
 	}
 	
-	public SFA<P, S> minimize(long budget, boolean upfront) 
+	public SFA<P, S> minimize(long budget, boolean upfront, boolean recordMinimization) 
 			throws TimeoutException
 	{
-		long endTime = System.nanoTime() + budget;
+		this.startTime = System.nanoTime();
+		long endTime = startTime + budget;
 		if (endTime < 0) //indicates overflow
 		{
 			endTime = Long.MAX_VALUE;
 		}
 		if(aut.isEmpty())
 		{
+			if(recordMinimization)
+			{
+				this.singularRecord = System.nanoTime() - startTime;
+			}
 			return SFA.getEmptySFA(ba);
 		}
 		ArrayList<P> upfront_minterms = null;
@@ -477,8 +494,11 @@ public class IncrementalMinimization <P,S>
 						equivClasses.union(equivPair.get(0), equivPair.get(1));
 						//equivClasses.union(equivPair.get(0), equivPair.get(1));
 					}
+					if(recordMinimization)
+					{
+						updateRecord(equivClasses);
+					}
 					timeCheck(endTime, equivClasses);
-					//after equiv merging for soft time budget?
 				}
 				else
 				{
@@ -495,6 +515,20 @@ public class IncrementalMinimization <P,S>
 		return mergeSFAStates(equivClasses);
 	}
 	
-	
+	public LinkedHashMap<Long, Integer> getRecord() throws TimeoutException
+	{
+		LinkedHashMap<Long,Integer> actualRecord = new LinkedHashMap<Long, Integer>();
+		actualRecord.put(this.startTime, aut.stateCount());
+		if (singularRecord != null)
+		{
+			actualRecord.put(singularRecord, 1);
+			return actualRecord;
+		}
+		for(Long time : record.keySet())
+		{
+			actualRecord.put(time, record.get(time));
+		}
+		return actualRecord;
+	}
 	
 }

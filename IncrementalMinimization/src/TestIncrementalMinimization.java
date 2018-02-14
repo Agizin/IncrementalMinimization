@@ -11,8 +11,14 @@ import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.TreeMap;
 
 import org.junit.Assert;
 import org.junit.Before;
@@ -130,7 +136,7 @@ public class TestIncrementalMinimization {
 		Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
 	}
 	
-	@Test
+	//@Test
 	public void testCompare() throws TimeoutException, IOException
 	{
 		System.out.println("========================");
@@ -138,7 +144,7 @@ public class TestIncrementalMinimization {
 		System.out.println("========================");
 		
 		//import list of regex. Heavily borrowed code from symbolic automata library
-		FileReader regexFile = new FileReader("src/pattern@75.txt");
+		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -280,7 +286,7 @@ public class TestIncrementalMinimization {
 		writer.close();
 	}
 	
-	@Test
+	//@Test
 	public void testBudget() throws TimeoutException, IOException
 	{
 		//Similar to Regex test, but incremental minimization only given as long as 
@@ -290,7 +296,7 @@ public class TestIncrementalMinimization {
 		System.out.println("=========================");
 		
 		//import list of regex
-		FileReader regexFile = new FileReader("src/pattern@75.txt");
+		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -305,7 +311,6 @@ public class TestIncrementalMinimization {
 		}
 		//regex converted to SFAs and minimized
 		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
-		//System.out.println(regexList.size());
 		ArrayList<String> messageList = new ArrayList<String>();
 		long timeout = 3600000; //determinization timeout = 1 hour
 		for(String regex : regexList)
@@ -380,7 +385,7 @@ public class TestIncrementalMinimization {
 			}
 			else
 			{
-				incrPercentMinimized = ((double) initialCount - incrCount)/(initialCount - finalCount);
+				incrPercentMinimized = ((double) initialCount - incrCount)/((double) initialCount - finalCount);
 			}
 			String incrPercent = Double.toString(incrPercentMinimized);
 			double upfPercentMinimized;
@@ -390,7 +395,7 @@ public class TestIncrementalMinimization {
 			}
 			else
 			{
-				upfPercentMinimized = ((double) initialCount - upfrontCount)/(initialCount - finalCount);
+				upfPercentMinimized = ((double) initialCount - upfrontCount)/((double)initialCount - finalCount);
 			}
 			String upfPercent = Double.toString(upfPercentMinimized);
 			
@@ -404,10 +409,200 @@ public class TestIncrementalMinimization {
 		FileOutputStream file = new FileOutputStream("budget_test.txt");
 		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write("initial states, final states, incremental states, upfront states" +
-				"incremental percent, upfront percent");
+				"incremental percent, upfront percent" + "\n");
 		for (String msg : messageList)
 		{
 			writer.write(msg + "\n");
+		}
+		writer.close();
+	}
+	
+	private Double getTimePercentage(Double currentTime, Double startTime, Double finishTime)
+	{
+		Assert.assertTrue(finishTime >= currentTime);
+		Double relativeTime = ((currentTime - startTime)/(finishTime - startTime))*100.0;
+		Assert.assertTrue(relativeTime >= 0);
+		Assert.assertTrue(relativeTime <= 100);
+		return relativeTime;
+	}
+	
+	private Double getMinimizedPercentage(Double curCount, Double initialCount, Double finalCount)
+	{
+		Assert.assertTrue(curCount <= initialCount);
+		Assert.assertTrue(finalCount <= curCount);
+		Double percentage = ((initialCount - curCount)/(initialCount - finalCount))*100.0;
+		Assert.assertTrue(percentage >= 0);
+		Assert.assertTrue(percentage <= 100);
+		return percentage;
+	}
+	
+	@Test
+	public void testRecord() throws IOException
+	{
+		//TODO: cleanup + document
+		System.out.println("====================");
+		System.out.println("STARTING RECORD TEST");
+		System.out.println("====================");
+		
+		//import list of regex
+		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		BufferedReader read = new BufferedReader(regexFile);
+		ArrayList<String> regexList = new ArrayList<String>();
+		String line;
+		while(true)
+		{
+			line = read.readLine();
+			if (line == null)
+			{
+				break;
+			}
+			regexList.add(line);
+		}
+		//regex converted to SFAs and minimized
+		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
+		ArrayList<String> messageList = new ArrayList<String>();
+		long timeout = 3600000; //determinization timeout = 1 hour
+		
+		Integer[] timeMilestones = {0,10,20,30,40,50,60,70,80,90,100};
+		TreeMap<Integer, HashMap<Integer, Double>> fullMinimizationMap = new TreeMap<Integer, HashMap<Integer, Double>>();
+		HashMap<Integer, Double> repeatCount = new HashMap<Integer, Double>();
+		for(String regex : regexList)
+		{
+			System.out.println("Start");
+			SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
+			try
+			{
+				aut = aut.determinize(ba, timeout);
+				aut = aut.mkTotal(ba);
+			}
+			catch(TimeoutException e)
+			{
+				continue;
+			}
+			catch(OutOfMemoryError e)
+			{
+				System.gc();
+				continue;
+			}
+			if(aut.stateCount() > 400 || aut.stateCount() <= 1)
+			{
+				continue;
+			}
+			System.out.println("Determinized.");
+			
+			SFA<CharPred, Character> incrMinAut;
+			LinkedHashMap<Long, Integer> record;
+			try
+			{
+				IncrementalMinimization<CharPred,Character> recordMin = 
+						new IncrementalMinimization<CharPred, Character>(aut, ba);
+				incrMinAut = recordMin.minimize(Long.MAX_VALUE, false, true);
+				record = recordMin.getRecord();
+			}
+			catch(TimeoutException e)
+			{
+				continue;
+			}
+			catch(OutOfMemoryError e)
+			{
+				continue;
+			}
+			System.out.println("Minimized.");
+			if(record.size()<=1)
+			{
+				continue;
+			}
+			Iterator<Long> timeIter = record.keySet().iterator();
+			Long startTime = timeIter.next();
+			Long finalTime = startTime;
+			while (timeIter.hasNext())
+			{
+				finalTime = timeIter.next();
+			}
+			Integer finalStateCount = record.get(finalTime);
+			Assert.assertEquals(incrMinAut.stateCount(), finalStateCount);
+			Integer initialStateCount = aut.stateCount();
+			if(finalStateCount == initialStateCount)
+			{
+				continue;
+			}
+			HashMap<Integer, Double> minimizationTimes = new LinkedHashMap<Integer, Double>();
+			minimizationTimes.put(0, 0.0);
+			int milestoneIndex = 0;
+			System.out.println(record);
+			for (Long time : record.keySet())
+			{
+				Double timePercent = getTimePercentage((double)time, (double)startTime, (double)finalTime);
+				Integer stateCount = record.get(time);
+				Double percentMinimized = getMinimizedPercentage((double)stateCount, (double) initialStateCount, (double) finalStateCount);
+				System.out.println(timePercent);
+				System.out.println(percentMinimized);
+				Integer currentMilestone = timeMilestones[milestoneIndex];
+				if (timePercent <= currentMilestone)
+				{
+					if (minimizationTimes.containsKey(currentMilestone))
+					{
+						Assert.assertTrue(percentMinimized >= minimizationTimes.get(currentMilestone));
+					}
+					minimizationTimes.put(currentMilestone, percentMinimized);
+				}
+				else
+				{
+					while(timePercent > currentMilestone)
+					{
+						Double prevMilestonePercent = minimizationTimes.get(currentMilestone);
+						milestoneIndex++;
+						currentMilestone = timeMilestones[milestoneIndex];
+						minimizationTimes.put(currentMilestone, prevMilestonePercent);
+						Assert.assertTrue(prevMilestonePercent <= percentMinimized);
+					}
+					minimizationTimes.put(currentMilestone, percentMinimized);
+				}
+			}
+			System.out.println(minimizationTimes);
+			if (!fullMinimizationMap.containsKey(initialStateCount))
+			{
+				repeatCount.put(initialStateCount, 1.0);
+				fullMinimizationMap.put(initialStateCount, minimizationTimes);
+			}
+			else
+			{
+				Double count = repeatCount.get(initialStateCount);
+				HashMap<Integer, Double> avgMinTimes = fullMinimizationMap.get(initialStateCount);
+				System.out.println(minimizationTimes);
+				for(Integer milestone : avgMinTimes.keySet())
+				{
+					Double curMilestonePercent = minimizationTimes.get(milestone);
+					Double avgMilestonePercent = avgMinTimes.get(milestone);
+					Double newAvg = avgMilestonePercent + (curMilestonePercent - avgMilestonePercent)/count;
+					avgMinTimes.put(milestone, newAvg);
+				}
+				repeatCount.put(initialStateCount, count+1);
+			}
+		}
+		FileOutputStream file = new FileOutputStream("record_test.txt");
+		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
+		String titleRow = "initial states, ";
+		for (Integer milestone : timeMilestones)
+		{
+			titleRow += String.format("%d, ", milestone);
+		}
+		titleRow += "\n";
+		writer.write(titleRow);
+		System.out.println(fullMinimizationMap.keySet());
+		System.out.println(fullMinimizationMap.entrySet());
+		for(Integer stateCount : fullMinimizationMap.keySet())
+		{
+			HashMap<Integer, Double> minTimes = fullMinimizationMap.get(stateCount);
+			String row = String.format("%d, ", stateCount);
+			for (Integer milestone : timeMilestones)
+			{
+				Double percentMin = minTimes.get(milestone);
+				row += String.format("%f, ", percentMin);
+			}
+			row += "\n";
+			System.out.print(row);
+			writer.write(row);
 		}
 		writer.close();
 	}
