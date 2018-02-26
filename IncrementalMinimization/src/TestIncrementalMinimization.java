@@ -136,7 +136,7 @@ public class TestIncrementalMinimization {
 		Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
 	}
 	
-	//@Test
+	@Test
 	public void testCompare() throws TimeoutException, IOException
 	{
 		System.out.println("========================");
@@ -185,10 +185,20 @@ public class TestIncrementalMinimization {
 			long stdStart = System.nanoTime();
 			SFA<CharPred, Character> stdMinAut;
 			stdMinAut = aut.minimize(ba);
-			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000);
+			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000000);
 			System.out.println("Standard minimized.");
 			
+			//moore minimization
+			long mooreStart = System.nanoTime();
+			SFA<CharPred, Character> mooreMinAut;
+			mooreMinAut = MooreMinimization.mooreMinimize(aut, ba);
+			Double mooreTime = ((double)(System.nanoTime() - mooreStart)/1000000);
+			Assert.assertTrue(SFA.areEquivalent(mooreMinAut, stdMinAut, ba));
+			Assert.assertTrue(mooreMinAut.stateCount() <= stdMinAut.stateCount());
+			System.out.println("Moore minimized.");
+			
 			//incremental minimization
+			System.out.println("Starting incremental minimization");
 			long incrStart = System.nanoTime();
 			SFA<CharPred, Character> incrMinAut;
 			try
@@ -205,7 +215,7 @@ public class TestIncrementalMinimization {
 				System.out.println("Skipping because out of heap space"); //TODO Debug
 				continue;
 			}
-			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000);
+			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000000);
 			Assert.assertTrue(incrMinAut.isDeterministic(ba));
 			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
 			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
@@ -213,6 +223,7 @@ public class TestIncrementalMinimization {
 			
 			
 			//DFAized incremental minimization
+			System.out.println("Starting upfront incremental");
 			long incrDFAStart = System.nanoTime();
 			SFA<CharPred, Character> upfrontMinAut;
 			try
@@ -229,10 +240,11 @@ public class TestIncrementalMinimization {
 				System.out.println("Skipping because out of heap space"); //TODO Debug
 				continue;
 			}
-			Double upfrontTime = ((double)(System.nanoTime() - incrDFAStart)/1000);
+			Double upfrontTime = ((double)(System.nanoTime() - incrDFAStart)/1000000);
 			Assert.assertTrue(upfrontMinAut.stateCount() <= stdMinAut.stateCount());
 			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
-			try
+			Assert.assertEquals(upfrontMinAut.stateCount(), incrMinAut.stateCount());
+			/*try
 			{
 				Assert.assertTrue(upfrontMinAut.stateCount() == incrMinAut.stateCount());
 			}
@@ -240,20 +252,29 @@ public class TestIncrementalMinimization {
 			{
 				System.out.println(upfrontMinAut.stateCount());
 				System.out.println(incrMinAut.stateCount());
-			}
+				throw(e);
+			}*/
 			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
 			System.out.println("Upfront Incremental minimized.");
 			
-			
-			//moore minimization
-			long mooreStart = System.nanoTime();
-			SFA<CharPred, Character> mooreMinAut;
-			mooreMinAut = MooreMinimization.mooreMinimize(aut, ba);
-			Double mooreTime = ((double)(System.nanoTime() - mooreStart)/1000);
-			Assert.assertTrue(SFA.areEquivalent(mooreMinAut, stdMinAut, ba));
-			Assert.assertTrue(mooreMinAut.stateCount() <= stdMinAut.stateCount());
-			System.out.println("Moore minimized.");
-			
+			//BFS incremental
+			System.out.println("Starting BFS incremental");
+			long bfsStart = System.nanoTime();
+			SFA<CharPred, Character> bfsMinAut;
+			try
+			{
+				bfsMinAut = IncrementalMinimization.incrBFSMinimize(aut, ba);
+			}
+			catch(TimeoutException e)
+			{
+				System.out.println("Skipping because of Timeout Exception"); //TODO: does this come up?
+				continue;
+			}
+			Double bfsTime = ((double)(System.nanoTime() - bfsStart)/1000000);
+			Assert.assertTrue(bfsMinAut.stateCount() <= stdMinAut.stateCount());
+			Assert.assertTrue(SFA.areEquivalent(bfsMinAut, stdMinAut, ba));
+			Assert.assertTrue(SFA.areEquivalent(bfsMinAut, incrMinAut, ba));
+			Assert.assertEquals(bfsMinAut.stateCount(), incrMinAut.stateCount());
 	
 			String initialStateCount = Integer.toString(aut.stateCount());
 			String transCount = Integer.toString(aut.getTransitionCount());
@@ -268,17 +289,17 @@ public class TestIncrementalMinimization {
 			ArrayList<CharPred> predList = new ArrayList<CharPred>(predSet);
 			String mintermCount = Integer.toString(ba.GetMinterms(predList).size());
 			
-			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s",
+			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
 					initialStateCount, finalStateCount, transCount, predCount, mintermCount,
 					Double.toString(incrTime), Double.toString(stdTime), Double.toString(mooreTime),
-					Double.toString(upfrontTime));
+					Double.toString(upfrontTime), Double.toString(bfsTime));
 			System.out.println(message);
 			messageList.add(message);
 		}
 		FileOutputStream file = new FileOutputStream("compare_test.txt");
 		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write("initial states, final states, transition count, predicate count, minterm count," +
-				"incremental time, standard time, Moore time, upfront incremental time");
+				"incremental time, standard time, Moore time, upfront incremental time, BFS incremental \n");
 		for (String msg : messageList)
 		{
 			writer.write(msg + "\n");
@@ -286,7 +307,7 @@ public class TestIncrementalMinimization {
 		writer.close();
 	}
 	
-	//@Test
+	@Test
 	public void testBudget() throws TimeoutException, IOException
 	{
 		//Similar to Regex test, but incremental minimization only given as long as 
@@ -436,7 +457,13 @@ public class TestIncrementalMinimization {
 		return percentage;
 	}
 	
-	@Test
+	private Double linearInterpolate(Integer x, Integer x0, Integer x1, Double y0, Double y1)
+	{
+		Double slope = (y1-y0)/(x1-x0);
+		return y0 + (x-x0)*slope;
+	}
+	
+	//@Test
 	public void testRecord() throws IOException
 	{
 		//TODO: cleanup + document
@@ -463,12 +490,17 @@ public class TestIncrementalMinimization {
 		ArrayList<String> messageList = new ArrayList<String>();
 		long timeout = 3600000; //determinization timeout = 1 hour
 		
-		Integer[] timeMilestones = {0,10,20,30,40,50,60,70,80,90,100};
+		Integer[] milestones = new Integer[101];
+		for(int i = 0; i < milestones.length; i++)
+		{
+			milestones[i] = i;
+		}
 		TreeMap<Integer, HashMap<Integer, Double>> fullMinimizationMap = new TreeMap<Integer, HashMap<Integer, Double>>();
+		TreeMap<Integer, HashMap<Integer, Double>> oppositeMap = new TreeMap<Integer, HashMap<Integer, Double>>();
 		HashMap<Integer, Double> repeatCount = new HashMap<Integer, Double>();
+		HashMap<Integer, Double> otherRepeat = new HashMap<Integer, Double>();
 		for(String regex : regexList)
 		{
-			System.out.println("Start");
 			SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
 			try
 			{
@@ -496,7 +528,7 @@ public class TestIncrementalMinimization {
 			{
 				IncrementalMinimization<CharPred,Character> recordMin = 
 						new IncrementalMinimization<CharPred, Character>(aut, ba);
-				incrMinAut = recordMin.minimize(Long.MAX_VALUE, false, true);
+				incrMinAut = recordMin.minimize(Long.MAX_VALUE, false, true, false);
 				record = recordMin.getRecord();
 			}
 			catch(TimeoutException e)
@@ -527,17 +559,17 @@ public class TestIncrementalMinimization {
 				continue;
 			}
 			HashMap<Integer, Double> minimizationTimes = new LinkedHashMap<Integer, Double>();
+			HashMap<Integer, Double> minimizationPercents = new LinkedHashMap<Integer, Double>();
 			minimizationTimes.put(0, 0.0);
+			minimizationPercents.put(0, 0.0);
 			int milestoneIndex = 0;
-			System.out.println(record);
+			int otherIndex = 0; //TODO: fix literally all of these variable names - make readable!
 			for (Long time : record.keySet())
 			{
 				Double timePercent = getTimePercentage((double)time, (double)startTime, (double)finalTime);
 				Integer stateCount = record.get(time);
 				Double percentMinimized = getMinimizedPercentage((double)stateCount, (double) initialStateCount, (double) finalStateCount);
-				System.out.println(timePercent);
-				System.out.println(percentMinimized);
-				Integer currentMilestone = timeMilestones[milestoneIndex];
+				Integer currentMilestone = milestones[milestoneIndex];
 				if (timePercent <= currentMilestone)
 				{
 					if (minimizationTimes.containsKey(currentMilestone))
@@ -552,14 +584,51 @@ public class TestIncrementalMinimization {
 					{
 						Double prevMilestonePercent = minimizationTimes.get(currentMilestone);
 						milestoneIndex++;
-						currentMilestone = timeMilestones[milestoneIndex];
+						currentMilestone = milestones[milestoneIndex];
 						minimizationTimes.put(currentMilestone, prevMilestonePercent);
 						Assert.assertTrue(prevMilestonePercent <= percentMinimized);
 					}
 					minimizationTimes.put(currentMilestone, percentMinimized);
 				}
+				Double msTime = (new Double(time))/1000000.0;
+				currentMilestone = milestones[otherIndex];
+				if (percentMinimized <= currentMilestone)
+				{
+					if (minimizationPercents.containsKey(currentMilestone))
+					{
+						Assert.assertTrue(msTime >= minimizationPercents.get(currentMilestone));
+					}
+					minimizationPercents.put(currentMilestone, msTime);
+				}
+				else
+				{	
+					Double prevMilestoneTime = minimizationPercents.get(currentMilestone);
+					Integer startIndex = new Integer(otherIndex);
+					while(percentMinimized > currentMilestone)
+					{
+						otherIndex++;
+						currentMilestone = milestones[otherIndex]; //actually not for time anymore...
+					}
+					Assert.assertTrue(startIndex < otherIndex);
+					Integer curIndex = new Integer(startIndex + 1);
+					if(curIndex == otherIndex)
+					{
+						minimizationPercents.put(currentMilestone, msTime);
+					}
+					else
+					{
+						Integer prevMilestone = milestones[startIndex];
+						while(curIndex < otherIndex)
+						{
+							Integer skippedMilestone = milestones[curIndex];
+							minimizationPercents.put(skippedMilestone,
+									linearInterpolate(skippedMilestone, prevMilestone, currentMilestone, prevMilestoneTime, msTime));
+							curIndex++;
+						}
+						minimizationPercents.put(currentMilestone, msTime);
+					}
+				}
 			}
-			System.out.println(minimizationTimes);
 			if (!fullMinimizationMap.containsKey(initialStateCount))
 			{
 				repeatCount.put(initialStateCount, 1.0);
@@ -569,7 +638,6 @@ public class TestIncrementalMinimization {
 			{
 				Double count = repeatCount.get(initialStateCount);
 				HashMap<Integer, Double> avgMinTimes = fullMinimizationMap.get(initialStateCount);
-				System.out.println(minimizationTimes);
 				for(Integer milestone : avgMinTimes.keySet())
 				{
 					Double curMilestonePercent = minimizationTimes.get(milestone);
@@ -579,32 +647,68 @@ public class TestIncrementalMinimization {
 				}
 				repeatCount.put(initialStateCount, count+1);
 			}
+			if (!oppositeMap.containsKey(initialStateCount))
+			{
+				otherRepeat.put(initialStateCount, 1.0);
+				oppositeMap.put(initialStateCount, minimizationPercents);
+			}
+			else
+			{
+				Double count = otherRepeat.get(initialStateCount);
+				HashMap<Integer, Double> avgMinPercents = oppositeMap.get(initialStateCount);
+				for (Integer milestone : avgMinPercents.keySet())
+				{
+					Double curMilestoneTime = minimizationPercents.get(milestone);
+					Double avgMilestoneTime = avgMinPercents.get(milestone);
+					Double newAvg = avgMilestoneTime + (curMilestoneTime - avgMilestoneTime)/count;
+					avgMinPercents.put(milestone, newAvg);
+				}
+				otherRepeat.put(initialStateCount, count+1);
+			}
 		}
-		FileOutputStream file = new FileOutputStream("record_test.txt");
-		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		String titleRow = "initial states, ";
-		for (Integer milestone : timeMilestones)
+		for (Integer milestone : milestones)
 		{
 			titleRow += String.format("%d, ", milestone);
 		}
 		titleRow += "\n";
+		
+		FileOutputStream file = new FileOutputStream("record_test.txt");
+		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write(titleRow);
-		System.out.println(fullMinimizationMap.keySet());
-		System.out.println(fullMinimizationMap.entrySet());
 		for(Integer stateCount : fullMinimizationMap.keySet())
 		{
 			HashMap<Integer, Double> minTimes = fullMinimizationMap.get(stateCount);
 			String row = String.format("%d, ", stateCount);
-			for (Integer milestone : timeMilestones)
+			for (Integer milestone : milestones)
 			{
 				Double percentMin = minTimes.get(milestone);
 				row += String.format("%f, ", percentMin);
 			}
 			row += "\n";
-			System.out.print(row);
 			writer.write(row);
 		}
 		writer.close();
+		
+		FileOutputStream newFile = new FileOutputStream("second_record_test.txt");
+		BufferedWriter newWriter = new BufferedWriter(new OutputStreamWriter(file));
+		System.out.println(oppositeMap.entrySet());
+		newWriter.write(titleRow);
+		System.out.println(titleRow);
+		for (Integer stateCount : oppositeMap.keySet())
+		{
+			HashMap<Integer, Double> minPercents = oppositeMap.get(stateCount);
+			String row = String.format("%d, ", stateCount);
+			for (Integer milestone : milestones)
+			{
+				Double timeMin = minPercents.get(milestone);
+				row += String.format("%f, ", timeMin);
+			}
+			row += "\n";
+			System.out.print(row);
+			newWriter.write(row);
+		}
+		newWriter.close();
 	}
 
 }
