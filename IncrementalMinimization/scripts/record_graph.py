@@ -29,10 +29,11 @@ dataDict = {}
 for row in fStrings[1:]:
     if row:
         row = row.split(",")
-        print(row)
         states = toNum(row[0])
-        for percent in row[1:-1]:
-            z.append(toNum(percent))
+	maxTime = toNum(row[-2])
+        for time in row[1:-1]:
+            percent = toNum(time)/maxTime*100
+            z.append(percent)
             y.append(states)
 
 
@@ -41,9 +42,7 @@ y = abs(numpy.unique(y))
 X,Y = numpy.meshgrid(x,y)
 z = abs(numpy.array(z))
 Z = z.reshape(len(y),len(x))
-print(y)
-print(x)
-print(Z.min())
+print(Z)
 pyplot.pcolormesh(X,Y,Z)
 bar = pyplot.colorbar()
 bar.set_label("Percentage of Time Passed")

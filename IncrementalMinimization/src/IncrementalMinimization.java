@@ -9,28 +9,23 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.function.ToDoubleFunction;
-import java.util.function.ToIntFunction;
-import java.util.function.ToLongFunction;
+import java.util.Stack;
 
 import org.sat4j.specs.TimeoutException;
 
 import theory.BooleanAlgebra;
-import theory.intervals.IntPred;
-import theory.intervals.IntegerSolver;
-import utilities.Pair;
 import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
 import automata.sfa.SFAMove;
 
 public class IncrementalMinimization <P,S>
 {
-	@SuppressWarnings("rawtypes") // Extensions of Throwable class can not be generic
+	
+	@SuppressWarnings("rawtypes") //Throwable subclasses can not be made generic
 	private static class TimeBudgetExceeded extends TimeoutException
 	{
-		private SFA returnAut;
+		
+		private final SFA returnAut;
 		
 		public TimeBudgetExceeded(String message, SFA returnAut)
 		{
@@ -49,12 +44,28 @@ public class IncrementalMinimization <P,S>
 		}
 	}
 	
-	private class EquivTest
+	private class EquivTest //tests for equality of two given states in the automata
 	{
+		protected class EquivRecord
+		{
+			public Integer pState;
+			public Integer qState;
+			public HashSet <List<Integer>> curPath;
+			
+			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath)
+			{
+				this.pState = p;
+				this.qState = q;
+				this.curPath = curPath;
+			}
+		}
+		
 		protected final DisjointSets<Integer> equivClasses;
 		
 		protected HashSet<List<Integer>> equiv;
 		protected HashSet<List<Integer>> path;
+		
+		private int maxDepth;
 		
 		public EquivTest(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
 				HashSet<List<Integer>> path)
@@ -62,6 +73,7 @@ public class IncrementalMinimization <P,S>
 			this.equivClasses = equivClasses;
 			this.equiv = equiv;
 			this.path = path;
+			this.maxDepth = 0;
 		}
 		
 		protected List<SFAInputMove<P,S>> findNonDisjointMoves(Collection<SFAInputMove<P, S>> outp, 
@@ -83,6 +95,100 @@ public class IncrementalMinimization <P,S>
 			return null;
 		}
 		
+		public boolean isEquiv(Integer pStart, Integer qStart) throws TimeoutException
+		{
+			if (isKnownNotEqual(pStart,qStart))
+			{
+				return false;
+			}
+			EquivRecord start = new EquivRecord(pStart,qStart,path);
+			Stack<EquivRecord> testStack = new Stack<EquivRecord>();
+			testStack.add(start);
+			while (!testStack.isEmpty())
+			{
+				EquivRecord curEquivTest = testStack.pop();
+				Integer p = curEquivTest.pState;
+				Integer q = curEquivTest.qState;
+				HashSet<List<Integer>> curPath = curEquivTest.curPath;
+				List<Integer> pair = normalize(p,q);
+				HashSet<List<Integer>> newPath = new HashSet<List<Integer>>(curPath);
+				newPath.add(pair);
+				if (debug)
+				{
+					maxDepth += 1;
+				}
+				Collection<SFAInputMove<P,S>> outp = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(p));
+				Collection<SFAInputMove<P,S>> outq = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(q));
+				while(!outp.isEmpty() && !outq.isEmpty())
+				{			
+					List<SFAInputMove<P,S>> nonDisjointGuards = findNonDisjointMoves(outp, outq);
+					SFAInputMove<P,S> pMove = nonDisjointGuards.get(0);
+					SFAInputMove<P,S> qMove = nonDisjointGuards.get(1);
+					Integer pNextClass = equivClasses.find(pMove.to);
+					Integer qNextClass = equivClasses.find(qMove.to);
+					List<Integer> nextPair = normalize(pNextClass, qNextClass);
+					if(!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
+					{
+						if(isKnownNotEqual(pNextClass,qNextClass))
+						{
+							this.path = newPath;
+							return false;
+						}
+						if (!newPath.contains(nextPair))
+						{
+							equiv.add(nextPair); 
+							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
+							testStack.push(nextTest);
+						}
+					}
+					outp.remove(pMove);
+					outq.remove(qMove);
+					P newPGuard = ba.MkAnd(pMove.guard, ba.MkNot(qMove.guard));
+					if (ba.IsSatisfiable(newPGuard))
+					{
+						outp.add(new SFAInputMove<P,S>(pMove.from, pMove.to, newPGuard));
+					}
+					P newQGuard = ba.MkAnd(qMove.guard, ba.MkNot(pMove.guard));
+					if (ba.IsSatisfiable(newQGuard))
+					{
+						outq.add(new SFAInputMove<P,S>(qMove.from, qMove.to, newQGuard));
+					}
+				}
+			}
+			equiv.add(normalize(pStart, qStart));
+			return true;
+		}
+		
+		public HashSet<List<Integer>> getEquiv()
+		{
+			return equiv;
+		}
+		
+		public HashSet<List<Integer>> getPath()
+		{
+			return path;
+		}
+		
+		public Integer getMaxDepth() throws DebugException
+		{
+			if (debug)
+			{
+				return maxDepth; 
+			}
+			throw new DebugException("Not in debug");
+		}
+	}
+	
+	private class EquivTestRecursive extends EquivTest
+	{
+		
+		public EquivTestRecursive(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
+				HashSet<List<Integer>> path)
+		{
+			super(equivClasses, equiv, path);
+		}
+		
+		@Override
 		public boolean isEquiv(Integer p, Integer q) throws TimeoutException
 		{
 			if (isKnownNotEqual(p,q))
@@ -134,100 +240,6 @@ public class IncrementalMinimization <P,S>
 			equiv.add(pair);
 			return true;
 		}
-		
-		public HashSet<List<Integer>> getEquiv()
-		{
-			return equiv;
-		}
-		
-		public HashSet<List<Integer>> getPath()
-		{
-			return path;
-		}
-	}
-	
-	private class EquivTestBFS extends EquivTest
-	{
-		public class EquivRecord
-		{
-			public Integer pState;
-			public Integer qState;
-			public HashSet <List<Integer>> curPath;
-			
-			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath)
-			{
-				this.pState = p;
-				this.qState = q;
-				this.curPath = curPath;
-			}
-		}
-		
-		public EquivTestBFS(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
-				HashSet<List<Integer>> path)
-		{
-			super(equivClasses, equiv, path);
-		}
-		
-		@Override
-		public boolean isEquiv(Integer pStart, Integer qStart) throws TimeoutException
-		{
-			if (isKnownNotEqual(pStart,qStart))
-			{
-				return false;
-			}
-			EquivRecord start = new EquivRecord(pStart,qStart,path);
-			Queue<EquivRecord> testQueue = new LinkedList<EquivRecord>();
-			testQueue.add(start);
-			while (!testQueue.isEmpty())
-			{
-				EquivRecord curEquivTest = testQueue.remove();
-				Integer p = curEquivTest.pState;
-				Integer q = curEquivTest.qState;
-				HashSet<List<Integer>> curPath = curEquivTest.curPath;
-				List<Integer> pair = normalize(p,q);
-				HashSet<List<Integer>> newPath = new HashSet<List<Integer>>(curPath);
-				newPath.add(pair);
-				Collection<SFAInputMove<P,S>> outp = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(p));
-				Collection<SFAInputMove<P,S>> outq = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(q));
-				while(!outp.isEmpty() && !outq.isEmpty())
-				{			
-					List<SFAInputMove<P,S>> nonDisjointGuards = findNonDisjointMoves(outp, outq);
-					SFAInputMove<P,S> pMove = nonDisjointGuards.get(0);
-					SFAInputMove<P,S> qMove = nonDisjointGuards.get(1);
-					Integer pNextClass = equivClasses.find(pMove.to);
-					Integer qNextClass = equivClasses.find(qMove.to);
-					List<Integer> nextPair = normalize(pNextClass, qNextClass);
-					if(!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
-					{
-						if(isKnownNotEqual(pNextClass,qNextClass))
-						{
-							this.path = newPath;
-							return false;
-						}
-						if (!newPath.contains(nextPair))
-						{
-							equiv.add(nextPair); //Currently equiv added to all pairs in queues WIHTOUT changing, if incorrect - copy first
-							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
-							testQueue.add(nextTest);
-						}
-					}
-					outp.remove(pMove);
-					outq.remove(qMove);
-					P newPGuard = ba.MkAnd(pMove.guard, ba.MkNot(qMove.guard));
-					if (ba.IsSatisfiable(newPGuard))
-					{
-						outp.add(new SFAInputMove<P,S>(pMove.from, pMove.to, newPGuard));
-					}
-					P newQGuard = ba.MkAnd(qMove.guard, ba.MkNot(pMove.guard));
-					if (ba.IsSatisfiable(newQGuard))
-					{
-						outq.add(new SFAInputMove<P,S>(qMove.from, qMove.to, newQGuard));
-					}
-				}
-			}
-			equiv.add(normalize(pStart, qStart));
-			return true;
-		}
 	}
 	
 	private class EquivTestUpfront extends EquivTest
@@ -259,37 +271,46 @@ public class IncrementalMinimization <P,S>
 		}
 		
 		@Override
-		public boolean isEquiv(Integer p, Integer q) throws TimeoutException, TimeBudgetExceeded
+		public boolean isEquiv(Integer pStart, Integer qStart) throws TimeoutException, TimeBudgetExceeded
 		{
-			if (isKnownNotEqual(p,q))
+			if (isKnownNotEqual(pStart,qStart))
 			{
 				return false;
 			}
-			List<Integer> pair = normalize(p,q);
-			if (path.contains(pair))
+			EquivRecord start = new EquivRecord(pStart,qStart,path);
+			Stack<EquivRecord> testStack = new Stack<EquivRecord>();
+			testStack.add(start);
+			while (!testStack.isEmpty())
 			{
-				return true;
-			}
-			path.add(pair);
-			for (P minterm : minterms)
-			{
-				Integer pNextClass = equivClasses.find(mintermTransition(p, minterm));
-				Integer qNextClass = equivClasses.find(mintermTransition(q, minterm));
-				List<Integer> nextPair = normalize(pNextClass, qNextClass);
-				if (!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
+				EquivRecord curEquivTest = testStack.pop();
+				Integer p = curEquivTest.pState;
+				Integer q = curEquivTest.qState;
+				HashSet<List<Integer>> curPath = curEquivTest.curPath;
+				List<Integer> pair = normalize(p,q);
+				HashSet<List<Integer>> newPath = new HashSet<List<Integer>>(curPath);
+				newPath.add(pair);
+				for (P minterm : minterms)
 				{
-					equiv.add(nextPair);
-					if(!isEquiv(pNextClass, qNextClass))
+					Integer pNextClass = equivClasses.find(mintermTransition(p, minterm));
+					Integer qNextClass = equivClasses.find(mintermTransition(q, minterm));
+					List<Integer> nextPair = normalize(pNextClass, qNextClass);
+					if (!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
 					{
-						return false;
-					}
-					else
-					{
-						path.remove(nextPair);
+						equiv.add(nextPair);
+						if(isKnownNotEqual(pNextClass, qNextClass))
+						{
+							return false;
+						}
+						if(!newPath.contains(nextPair))
+						{
+							equiv.add(nextPair);
+							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
+							testStack.push(nextTest);
+						}
 					}
 				}
 			}
-			equiv.add(pair);
+			equiv.add(normalize(pStart, qStart));
 			return true;
 		}
 		
@@ -319,12 +340,16 @@ public class IncrementalMinimization <P,S>
 	{
 		try
 		{
-			IncrementalMinimization<P,S> min = new IncrementalMinimization<P,S>(aut, ba);
+			IncrementalMinimization<P,S> min = new IncrementalMinimization<P,S>(aut, ba, false);
 			return min.minimize(budget, upfront, false, false);
 		}
 		catch(TimeBudgetExceeded e)
 		{
 			return e.getReturnAut();
+		}
+		catch(DebugException e)
+		{
+			throw new RuntimeException(e); //impossible to get here.
 		}
 	}
 	
@@ -338,10 +363,17 @@ public class IncrementalMinimization <P,S>
 		return incrementalMinimize(aut, ba, Long.MAX_VALUE, false); //Default time budget 200+ years (i.e. there is none)
 	}
 	
-	public static <P,S> SFA<P,S> incrBFSMinimize(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
+	public static <P,S> SFA<P,S> incrRecursiveMin(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
 	{
-		IncrementalMinimization<P,S> bfsMin = new IncrementalMinimization<P,S>(aut,ba);
-		return bfsMin.minimize(Long.MAX_VALUE, false, false, true);
+		IncrementalMinimization<P,S> recMin = new IncrementalMinimization<P,S>(aut,ba, false);
+		try 
+		{
+			return recMin.minimize(Long.MAX_VALUE, false, false, true);
+		} 
+		catch (DebugException e) 
+		{
+			throw new RuntimeException(e);
+		}
 	}
 	
 	private final SFA<P,S> aut;
@@ -354,8 +386,9 @@ public class IncrementalMinimization <P,S>
 	private Long startTime;
 	private LinkedHashMap<Long, Integer> record; //maps time stamps to number of states
 	private Long singularRecord = null;
+	private boolean debug;
 	
-	public IncrementalMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
+	public IncrementalMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba, boolean debug) throws TimeoutException
 	{
 		if (!aut.isDeterministic())
 		{
@@ -363,6 +396,7 @@ public class IncrementalMinimization <P,S>
 		}
 		this.aut = aut.mkTotal(ba);
 		this.ba = ba;
+		this.debug=debug;
 		this.num_pairs = aut.getStates().size() * aut.getStates().size();
 		this.neq = new HashSet<List<Integer>>(num_pairs, 0.9f); //won't exceed initial capacity
 		this.distanceToFinalMap = generateDistanceToFinalMap();
@@ -511,8 +545,8 @@ public class IncrementalMinimization <P,S>
 		}
 	}
 	
-	public SFA<P, S> minimize(long budget, boolean upfront, boolean recordMinimization, boolean bfs) 
-			throws TimeoutException
+	public SFA<P, S> minimize(long budget, boolean upfront, boolean recordMinimization, boolean recursive) 
+			throws TimeoutException, DebugException
 	{
 		this.startTime = System.nanoTime();
 		long endTime = startTime + budget;
@@ -572,9 +606,9 @@ public class IncrementalMinimization <P,S>
 					pEquiv = new EquivTestUpfront(equivClasses, upfront_minterms, equiv, path);
 
 				}
-				else if (bfs)
+				else if (recursive)
 				{
-					pEquiv = new EquivTestBFS(equivClasses, equiv, path);
+					pEquiv = new EquivTestRecursive(equivClasses, equiv, path);
 				}
 				else
 				{
@@ -593,6 +627,10 @@ public class IncrementalMinimization <P,S>
 					if(recordMinimization)
 					{
 						updateRecord(equivClasses);
+					}
+					if (debug)
+					{
+						throw new DebugException("finished first equiv test", pEquiv.getMaxDepth());
 					}
 					timeCheck(endTime, equivClasses);
 				}

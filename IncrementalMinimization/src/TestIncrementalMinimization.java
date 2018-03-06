@@ -259,22 +259,22 @@ public class TestIncrementalMinimization {
 			
 			//BFS incremental
 			System.out.println("Starting BFS incremental");
-			long bfsStart = System.nanoTime();
-			SFA<CharPred, Character> bfsMinAut;
+			long recStart = System.nanoTime();
+			SFA<CharPred, Character> recursiveMinAut;
 			try
 			{
-				bfsMinAut = IncrementalMinimization.incrBFSMinimize(aut, ba);
+				recursiveMinAut = IncrementalMinimization.incrRecursiveMin(aut, ba);
 			}
 			catch(TimeoutException e)
 			{
 				System.out.println("Skipping because of Timeout Exception"); //TODO: does this come up?
 				continue;
 			}
-			Double bfsTime = ((double)(System.nanoTime() - bfsStart)/1000000);
-			Assert.assertTrue(bfsMinAut.stateCount() <= stdMinAut.stateCount());
-			Assert.assertTrue(SFA.areEquivalent(bfsMinAut, stdMinAut, ba));
-			Assert.assertTrue(SFA.areEquivalent(bfsMinAut, incrMinAut, ba));
-			Assert.assertEquals(bfsMinAut.stateCount(), incrMinAut.stateCount());
+			Double recTime = ((double)(System.nanoTime() - recStart)/1000000);
+			Assert.assertTrue(recursiveMinAut.stateCount() <= stdMinAut.stateCount());
+			Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, stdMinAut, ba));
+			Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, incrMinAut, ba));
+			Assert.assertEquals(recursiveMinAut.stateCount(), incrMinAut.stateCount());
 	
 			String initialStateCount = Integer.toString(aut.stateCount());
 			String transCount = Integer.toString(aut.getTransitionCount());
@@ -292,14 +292,14 @@ public class TestIncrementalMinimization {
 			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
 					initialStateCount, finalStateCount, transCount, predCount, mintermCount,
 					Double.toString(incrTime), Double.toString(stdTime), Double.toString(mooreTime),
-					Double.toString(upfrontTime), Double.toString(bfsTime));
+					Double.toString(upfrontTime), Double.toString(recTime));
 			System.out.println(message);
 			messageList.add(message);
 		}
 		FileOutputStream file = new FileOutputStream("compare_test.txt");
 		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write("initial states, final states, transition count, predicate count, minterm count," +
-				"incremental time, standard time, Moore time, upfront incremental time, BFS incremental \n");
+				"incremental time, standard time, Moore time, upfront incremental time, recursive symbolic incremental \n");
 		for (String msg : messageList)
 		{
 			writer.write(msg + "\n");
@@ -463,8 +463,8 @@ public class TestIncrementalMinimization {
 		return y0 + (x-x0)*slope;
 	}
 	
-	//@Test
-	public void testRecord() throws IOException
+	@Test
+	public void testRecord() throws IOException, DebugException
 	{
 		//TODO: cleanup + document
 		System.out.println("====================");
@@ -527,7 +527,7 @@ public class TestIncrementalMinimization {
 			try
 			{
 				IncrementalMinimization<CharPred,Character> recordMin = 
-						new IncrementalMinimization<CharPred, Character>(aut, ba);
+						new IncrementalMinimization<CharPred, Character>(aut, ba, false);
 				incrMinAut = recordMin.minimize(Long.MAX_VALUE, false, true, false);
 				record = recordMin.getRecord();
 			}
@@ -672,43 +672,117 @@ public class TestIncrementalMinimization {
 			titleRow += String.format("%d, ", milestone);
 		}
 		titleRow += "\n";
-		
-		FileOutputStream file = new FileOutputStream("record_test.txt");
+		System.out.print(titleRow);
+		FileOutputStream file = new FileOutputStream("second_record_test.txt");
 		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write(titleRow);
-		for(Integer stateCount : fullMinimizationMap.keySet())
+		for(Integer stateCount : oppositeMap.keySet())
 		{
-			HashMap<Integer, Double> minTimes = fullMinimizationMap.get(stateCount);
+			HashMap<Integer, Double> minTimes = oppositeMap.get(stateCount);
 			String row = String.format("%d, ", stateCount);
 			for (Integer milestone : milestones)
 			{
-				Double percentMin = minTimes.get(milestone);
-				row += String.format("%f, ", percentMin);
-			}
-			row += "\n";
-			writer.write(row);
-		}
-		writer.close();
-		
-		FileOutputStream newFile = new FileOutputStream("second_record_test.txt");
-		BufferedWriter newWriter = new BufferedWriter(new OutputStreamWriter(file));
-		System.out.println(oppositeMap.entrySet());
-		newWriter.write(titleRow);
-		System.out.println(titleRow);
-		for (Integer stateCount : oppositeMap.keySet())
-		{
-			HashMap<Integer, Double> minPercents = oppositeMap.get(stateCount);
-			String row = String.format("%d, ", stateCount);
-			for (Integer milestone : milestones)
-			{
-				Double timeMin = minPercents.get(milestone);
+				Double timeMin = minTimes.get(milestone);
 				row += String.format("%f, ", timeMin);
 			}
 			row += "\n";
 			System.out.print(row);
-			newWriter.write(row);
+			writer.write(row);
 		}
-		newWriter.close();
+		writer.close();
+	}
+	
+	@Test
+	public void testDepth() throws IOException, TimeoutException
+	{
+		System.out.println("===================");
+		System.out.println("STARTING DEPTH TEST");
+		System.out.println("===================");
+		//import list of regex
+		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		BufferedReader read = new BufferedReader(regexFile);
+		ArrayList<String> regexList = new ArrayList<String>();
+		String line;
+		while(true)
+		{
+			line = read.readLine();
+			if (line == null)
+			{
+				break;
+			}
+			regexList.add(line);
+		}
+		//regex converted to SFAs and minimized
+		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
+		ArrayList<String> messageList = new ArrayList<String>();
+		long timeout = 3600000; //determinization timeout = 1 hour
+		
+		double sumOfAvgs = 0;
+		double lengthOfAvgs = 0;
+		
+		regexLoop: //labels to break out from nested loops
+		for(String regex : regexList)
+		{
+			SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
+			try
+			{
+				aut = aut.determinize(ba, timeout);
+				aut = aut.mkTotal(ba);
+			}
+			catch(TimeoutException e)
+			{
+				continue;
+			}
+			catch(OutOfMemoryError e)
+			{
+				System.gc();
+				continue;
+			}
+			System.out.println("Determinized.");
+			
+			int tests = 5; //We do 5 tests per regex
+			int depthSum = 0;
+			for (int i = 0; i < tests; i++)
+			{
+				IncrementalMinimization<CharPred, Character> dbgTest = new IncrementalMinimization(aut, ba, true);
+				Integer maxDepth = null;
+				SFA<CharPred, Character> minAut = null;
+				try
+				{
+					minAut = dbgTest.minimize(Long.MAX_VALUE, false, false, false);
+				}
+				catch (DebugException e)
+				{
+					maxDepth = e.getDepth();
+				}
+				if (maxDepth == null)
+				{
+					Assert.assertEquals(aut.stateCount(), minAut.stateCount());
+					continue regexLoop;
+				}
+				
+				depthSum += maxDepth;
+			}
+			int startSize = aut.stateCount();
+			double depthAvg = depthSum / (new Double(tests));
+			sumOfAvgs += depthAvg;
+			lengthOfAvgs += 1;
+			double percSize = (startSize-depthAvg)/(new Double(startSize));
+			String row = String.format("%d, %f, %f", startSize, depthAvg, percSize);
+			messageList.add(row);
+			System.out.println(row);
+		}
+		System.out.println(String.format("Average: %f", sumOfAvgs/lengthOfAvgs));
+		String titlerow = "states, depth, percent \n";
+		FileOutputStream file = new FileOutputStream("depth_test.txt");
+		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
+		writer.write(titlerow);
+		for (String msg : messageList)
+		{
+			writer.write(msg + "\n");
+		}
+		writer.close();
+		
 	}
 
 }
