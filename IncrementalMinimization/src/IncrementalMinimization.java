@@ -181,6 +181,64 @@ public class IncrementalMinimization <P,S>
 	
 	private class EquivTestRecursive extends EquivTest
 	{
+		private class ResultDependencies
+		{
+			private boolean result;
+			private List<List<Integer>> dependencies; //List of pairs of states that must be equivalent for current result to hold.
+			
+			public ResultDependencies(boolean result, ArrayList<List<Integer>> dependencies)
+			{
+				this.result = result;
+				this.dependencies = dependencies;
+			}
+			
+			public ResultDependencies(boolean result) //TODO: make sure correct constructor is called
+			{
+				this(result, new ArrayList<List<Integer>>());
+			}
+			
+			public boolean resultIsIndependent()
+			{
+				return (dependencies == null) || dependencies.isEmpty();
+			}
+			
+			public void addDependency(List<Integer> dependent)
+			{
+				if (isEquiv())
+				{
+					dependencies.add(dependent);
+				}
+				else
+				{
+					throw new IllegalStateException("False result has no dependencies");
+				}
+			}
+			
+			public void combineWithResult(ResultDependencies other)
+			{
+				System.out.println("here");
+				assert(result == other.isEquiv());
+				dependencies.addAll(other.getDependencies());
+				System.out.println(path);
+				System.out.println(getDependencies());
+				System.out.println("stop");
+			}
+			
+			public boolean isEquiv()
+			{
+				return result;
+			}
+			
+			public List<List<Integer>> getDependencies()
+			{
+				return dependencies;
+			}
+			
+			public void setResultFalse()
+			{
+				result = false;
+			}
+		}
 		
 		public EquivTestRecursive(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
 				HashSet<List<Integer>> path)
@@ -188,23 +246,27 @@ public class IncrementalMinimization <P,S>
 			super(equivClasses, equiv, path);
 		}
 		
-		@Override
-		public boolean isEquiv(Integer p, Integer q) throws TimeoutException
+		public ResultDependencies isEquivRecursive(Integer p, Integer q) throws TimeoutException
 		{
 			if (isKnownNotEqual(p,q))
 			{
-				return false;
+				return new ResultDependencies(false);
 			}
 			List<Integer> pair = normalize(p,q);
 			if (path.contains(pair))
 			{
-				return true;
+				ResultDependencies r = new ResultDependencies(true);
+				r.addDependency(pair);
+				return r;
 			}
 			path.add(pair);
 			Collection<SFAInputMove<P, S>> outp = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(p));
 			Collection<SFAInputMove<P, S>> outq = new ArrayList<SFAInputMove<P,S>>(aut.getInputMovesFrom(q));
+			ResultDependencies thisResult = new ResultDependencies(true);
+			assert(thisResult.isEquiv());
 			while (!outp.isEmpty() && !outq.isEmpty())
 			{
+				assert(thisResult.isEquiv());
 				List<SFAInputMove<P,S>> nonDisjointGuards = findNonDisjointMoves(outp,outq);
 				SFAInputMove<P,S> pMove = nonDisjointGuards.get(0);
 				SFAInputMove<P,S> qMove = nonDisjointGuards.get(1);
@@ -215,14 +277,24 @@ public class IncrementalMinimization <P,S>
 				if ( !pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
 				{
 					equiv.add(nextPair);
-					if(!isEquiv(pNextClass, qNextClass))
+					ResultDependencies nextResult = isEquivRecursive(pNextClass, qNextClass);
+					if(!nextResult.isEquiv())
 					{
-						return false;
+						return nextResult;
 					}
 					else
 					{
 						path.remove(nextPair);
+						assert(nextResult.isEquiv());
+						thisResult.combineWithResult(nextResult);
+						assert(thisResult.isEquiv());
 					}
+				}
+				else if (equiv.contains(nextPair))
+				{
+					assert(thisResult.isEquiv());
+					thisResult.addDependency(nextPair);
+					assert(thisResult.isEquiv());
 				}
 				outp.remove(pMove);
 				outq.remove(qMove);
@@ -237,8 +309,28 @@ public class IncrementalMinimization <P,S>
 					outq.add(new SFAInputMove<P, S>(qMove.from, qMove.to, newQGuard));
 				}
 			}
-			equiv.add(pair);
-			return true;
+			if(thisResult.resultIsIndependent())
+			{
+				equivClasses.union(p,q);
+			}
+			else
+			{
+				equiv.add(pair);
+			}
+			return thisResult;
+		}
+		
+		@Override
+		public boolean isEquiv(Integer pStart, Integer qStart) throws TimeoutException
+		{
+			ResultDependencies finalResult = isEquivRecursive(pStart, qStart);
+			/*if(!finalResult.resultIsIndependent())
+			{
+				System.out.println(finalResult.getDependencies());
+				System.out.println(finalResult.isEquiv());
+			}
+			assert(finalResult.resultIsIndependent());*/
+			return finalResult.isEquiv();
 		}
 	}
 	
