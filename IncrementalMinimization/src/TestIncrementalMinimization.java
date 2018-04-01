@@ -40,7 +40,8 @@ import automata.sfa.SFAMove;
 public class TestIncrementalMinimization {
 
 	@Test
-	public void testMyAut() throws TimeoutException {
+	public void testMyAut() throws TimeoutException
+	{
 		//our algebra is constructed
 		IntegerSolver ba = new IntegerSolver();
 		IntPred neg = new IntPred(null, new Integer(0));
@@ -86,9 +87,11 @@ public class TestIncrementalMinimization {
 		//SFA is defined
 		SFA<IntPred, Integer> aut = SFA.MkSFA(transitions, 0, Arrays.asList(7,8), ba);
 				
-		SFA<IntPred, Integer> incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+		IncrementalMinimization<IntPred, Integer> incr = new IncrementalMinimization<IntPred, Integer>(aut,ba);
+		SFA<IntPred, Integer> incrMinAut = incr.minimize();
 		SFA<IntPred, Integer> stdMinAut = aut.minimize(ba); //auts are equivalent but incrMin is not determinstic!
-		SFA<IntPred, Integer> upfrontMinAut = IncrementalMinimization.incrementalMinimize(aut, ba, true);
+		IncrementalNaive<IntPred, Integer> naive = new IncrementalNaive<IntPred, Integer>(aut,ba);
+		SFA<IntPred, Integer> upfrontMinAut = naive.minimize();
 		
 		Assert.assertTrue(incrMinAut.isDeterministic(ba));
 		Assert.assertTrue(stdMinAut.isDeterministic(ba));
@@ -127,7 +130,8 @@ public class TestIncrementalMinimization {
 		SFA<CharPred, Character> aut = SFA.MkSFA(transitions, 9, Arrays.asList(3,4), ba);
 		aut = aut.determinize(ba).mkTotal(ba);
 		
-		SFA<CharPred, Character> incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+		IncrementalMinimization<CharPred, Character> incr = new IncrementalMinimization<CharPred, Character>(aut,ba);
+		SFA<CharPred, Character> incrMinAut = incr.minimize();
 		System.out.println(incrMinAut.getStates());
 		SFA<CharPred, Character> stdMinAut = aut.minimize(ba);
 		System.out.println(stdMinAut.getStates());
@@ -203,18 +207,19 @@ public class TestIncrementalMinimization {
 			SFA<CharPred, Character> incrMinAut;
 			try
 			{
-				incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba);
+				IncrementalMinimization<CharPred,Character> incrMin = new IncrementalMinimization<CharPred,Character>(aut, ba);
+				incrMinAut = incrMin.minimize();
 			}
 			catch(TimeoutException e)
 			{
 				System.out.println("Skipping because of Timeout Exception"); //TODO Debug
 				continue;
 			}
-			catch(OutOfMemoryError e)
+			/*catch(OutOfMemoryError e)
 			{
 				System.out.println("Skipping because out of heap space"); //TODO Debug
 				continue;
-			}
+			}*/
 			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000000);
 			Assert.assertTrue(incrMinAut.isDeterministic(ba));
 			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
@@ -228,18 +233,19 @@ public class TestIncrementalMinimization {
 			SFA<CharPred, Character> upfrontMinAut;
 			try
 			{
-				upfrontMinAut = IncrementalMinimization.incrementalMinimize(aut, ba, true);
+				IncrementalNaive<CharPred,Character> naiveMin = new IncrementalNaive<CharPred,Character>(aut, ba);
+				upfrontMinAut = naiveMin.minimize();
 			}
 			catch(TimeoutException e)
 			{
 				System.out.println("Skipping because of Timeout Exception"); //TODO Debug
 				continue;
 			}
-			catch(OutOfMemoryError e)
+			/*catch(OutOfMemoryError e)
 			{
 				System.out.println("Skipping because out of heap space"); //TODO Debug
 				continue;
-			}
+			}*/
 			Double upfrontTime = ((double)(System.nanoTime() - incrDFAStart)/1000000);
 			Assert.assertTrue(upfrontMinAut.stateCount() <= stdMinAut.stateCount());
 			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
@@ -263,7 +269,8 @@ public class TestIncrementalMinimization {
 			SFA<CharPred, Character> recursiveMinAut;
 			try
 			{
-				recursiveMinAut = IncrementalMinimization.incrRecursiveMin(aut, ba);
+				IncrementalRecursive<CharPred,Character> incrRec = new IncrementalRecursive<CharPred,Character>(aut, ba);
+				recursiveMinAut = incrRec.minimize();
 			}
 			catch(TimeoutException e)
 			{
@@ -272,7 +279,16 @@ public class TestIncrementalMinimization {
 			}
 			Double recTime = ((double)(System.nanoTime() - recStart)/1000000);
 			Assert.assertTrue(recursiveMinAut.stateCount() <= stdMinAut.stateCount());
-			Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, stdMinAut, ba));
+			try
+			{
+				Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, stdMinAut, ba));
+			}
+			catch(AssertionError e)
+			{
+				System.out.println(recursiveMinAut);
+				System.out.println(stdMinAut);
+				throw e;
+			}
 			Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, incrMinAut, ba));
 			Assert.assertEquals(recursiveMinAut.stateCount(), incrMinAut.stateCount());
 	
@@ -374,21 +390,36 @@ public class TestIncrementalMinimization {
 			SFA<CharPred, Character> upfrontIncrAut;
 			try
 			{
-				incrMinAut = IncrementalMinimization.incrementalMinimize(aut, ba, budget, false);
-				System.out.println("Incremental minimized.");
-				upfrontIncrAut = IncrementalMinimization.incrementalMinimize(aut, ba, budget, true);
-				System.out.println("Upfront incremental minimized..");
+				IncrementalMinimization<CharPred, Character> incrMin = new IncrementalMinimization<CharPred, Character>(aut,ba);
+				incrMinAut = incrMin.minimize(budget);
+			}
+			catch(TimeBudgetExceededException e)
+			{
+				incrMinAut = e.getReturnAut();
 			}
 			catch(TimeoutException e)
 			{
 				continue;
 			}
-			catch(OutOfMemoryError e)
+			System.out.println("Incremental minimized.");
+			try
+			{
+				IncrementalNaive<CharPred,Character> naiveMin = new IncrementalNaive<CharPred,Character>(aut, ba);
+				upfrontIncrAut = naiveMin.minimize(budget);
+			}
+			catch(TimeBudgetExceededException e)
+			{
+				upfrontIncrAut = e.getReturnAut();
+			}
+			catch(TimeoutException e)
 			{
 				continue;
 			}
-			
-			//TODO: negative percentages
+			/*catch(OutOfMemoryError e)
+			{
+				continue;
+			}*/
+			System.out.println("Naive incremental minimized..");
 			
 			int initialCount = aut.stateCount();
 			String initialStateCount = Integer.toString(initialCount);
@@ -522,23 +553,30 @@ public class TestIncrementalMinimization {
 			}
 			System.out.println("Determinized.");
 			
-			SFA<CharPred, Character> incrMinAut;
-			LinkedHashMap<Long, Integer> record;
+			SFA<CharPred, Character> incrMinAut =null;
+			LinkedHashMap<Long, Integer> record = null;
 			try
 			{
-				IncrementalMinimization<CharPred,Character> recordMin = 
-						new IncrementalMinimization<CharPred, Character>(aut, ba, false);
-				incrMinAut = recordMin.minimize(Long.MAX_VALUE, false, true, false);
-				record = recordMin.getRecord();
+				IncrementalMinimization<CharPred,Character> incrMin = 
+						new IncrementalMinimization<CharPred, Character>(aut, ba);
+				incrMinAut = incrMin.minimize(Long.MAX_VALUE, true, false);
+				record = incrMin.getRecord();
 			}
 			catch(TimeoutException e)
 			{
 				continue;
 			}
-			catch(OutOfMemoryError e)
+			catch(DebugException e)
+			{
+				//This will never occur
+				Assert.fail();
+			}
+			/*catch(OutOfMemoryError e)
 			{
 				continue;
-			}
+			}*/
+			Assert.assertTrue(incrMinAut != null);
+			Assert.assertTrue(record != null);
 			System.out.println("Minimized.");
 			if(record.size()<=1)
 			{
@@ -744,12 +782,12 @@ public class TestIncrementalMinimization {
 			int depthSum = 0;
 			for (int i = 0; i < tests; i++)
 			{
-				IncrementalMinimization<CharPred, Character> dbgTest = new IncrementalMinimization(aut, ba, true);
+				IncrementalMinimization<CharPred, Character> dbgTest = new IncrementalMinimization(aut, ba);
 				Integer maxDepth = null;
 				SFA<CharPred, Character> minAut = null;
 				try
 				{
-					minAut = dbgTest.minimize(Long.MAX_VALUE, false, false, false);
+					minAut = dbgTest.minimize(Long.MAX_VALUE, false, true);
 				}
 				catch (DebugException e)
 				{
