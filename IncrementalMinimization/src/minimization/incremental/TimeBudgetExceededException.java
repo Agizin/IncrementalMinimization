@@ -1,3 +1,4 @@
+package minimization.incremental;
 import org.sat4j.specs.TimeoutException;
 
 import automata.sfa.SFA;

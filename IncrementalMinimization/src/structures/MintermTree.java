@@ -1,3 +1,4 @@
+package structures;
 import java.util.ArrayList;
 
 import org.sat4j.specs.TimeoutException;

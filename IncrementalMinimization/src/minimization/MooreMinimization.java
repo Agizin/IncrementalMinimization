@@ -1,3 +1,4 @@
+package minimization;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -13,9 +14,24 @@ import automata.sfa.SFAInputMove;
 import automata.sfa.SFAMove;
 
 
-public class MooreMinimization
+public class MooreMinimization<P,S> implements MinimizationAlgorithm<P,S>
 {
-	private static List<Integer> normalize(Integer p, Integer q)
+	public static <P,S> SFA<P,S> mooreMinimize(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
+	{
+		MooreMinimization<P,S> moore = new MooreMinimization<P,S>(aut, ba);
+		return moore.minimize();
+	}
+	
+	private SFA<P,S> aut;
+	private BooleanAlgebra<P,S> ba;
+
+	private MooreMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba)
+	{
+		this.aut = aut;
+		this.ba = ba;
+	}
+	
+	private List<Integer> normalize(Integer p, Integer q)
 	{
 		List<Integer> pair;
 		if(p<q)
@@ -29,7 +45,7 @@ public class MooreMinimization
 		return pair;
 	}
 	
-	public static <P,S> SFA<P,S> mooreMinimize(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
+	public SFA<P,S> minimize() throws TimeoutException
 	{
 		if(aut.isEmpty())
 		{
@@ -41,7 +57,7 @@ public class MooreMinimization
 		}
 		aut = aut.mkTotal(ba);
 		int normalizeStateCount = (aut.stateCount()*aut.stateCount())/2;
-		HashSet<List<Integer>> neq = new HashSet<List<Integer>>();
+		HashSet<List<Integer>> neq = new HashSet<List<Integer>>(normalizeStateCount);
 		for (Integer p : aut.getFinalStates())
 		{
 			for (Integer q : aut.getNonFinalStates())

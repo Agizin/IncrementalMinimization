@@ -1,3 +1,5 @@
+package minimization.incremental;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -11,14 +13,18 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.Stack;
 
+import minimization.DebugException;
+import minimization.MinimizationAlgorithm;
+
 import org.sat4j.specs.TimeoutException;
 
+import structures.DisjointSets;
 import theory.BooleanAlgebra;
 import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
 import automata.sfa.SFAMove;
 
-public class IncrementalMinimization <P,S>
+public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 {
 	
 	protected class EquivTest //tests for equality of two given states in the automata

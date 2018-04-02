@@ -1,5 +1,6 @@
+package minimization;
 
-class DebugException extends Exception
+public class DebugException extends Exception
 {
 	private final Integer maxDepth;
 			

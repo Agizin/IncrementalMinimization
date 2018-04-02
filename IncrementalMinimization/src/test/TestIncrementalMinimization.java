@@ -1,3 +1,4 @@
+package test;
 import static org.junit.Assert.*;
 
 import java.io.BufferedReader;
@@ -20,6 +21,14 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 
+
+import minimization.DebugException;
+import minimization.MooreMinimization;
+import minimization.incremental.IncrementalMinimization;
+import minimization.incremental.IncrementalNaive;
+import minimization.incremental.IncrementalRecursive;
+import minimization.incremental.TimeBudgetExceededException;
+
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -37,7 +46,9 @@ import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
 import automata.sfa.SFAMove;
 
-public class TestIncrementalMinimization {
+public class TestIncrementalMinimization 
+{
+	public static final String REGEX_FILE = "src/test/regexlib-SFA.txt";
 
 	@Test
 	public void testMyAut() throws TimeoutException
@@ -148,7 +159,7 @@ public class TestIncrementalMinimization {
 		System.out.println("========================");
 		
 		//import list of regex. Heavily borrowed code from symbolic automata library
-		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		FileReader regexFile = new FileReader(REGEX_FILE);
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -333,7 +344,7 @@ public class TestIncrementalMinimization {
 		System.out.println("=========================");
 		
 		//import list of regex
-		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		FileReader regexFile = new FileReader(REGEX_FILE);
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -495,7 +506,7 @@ public class TestIncrementalMinimization {
 	}
 	
 	@Test
-	public void testRecord() throws IOException, DebugException
+	public void testRecord() throws IOException
 	{
 		//TODO: cleanup + document
 		System.out.println("====================");
@@ -503,7 +514,7 @@ public class TestIncrementalMinimization {
 		System.out.println("====================");
 		
 		//import list of regex
-		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		FileReader regexFile = new FileReader(REGEX_FILE);
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;
@@ -737,7 +748,7 @@ public class TestIncrementalMinimization {
 		System.out.println("STARTING DEPTH TEST");
 		System.out.println("===================");
 		//import list of regex
-		FileReader regexFile = new FileReader("src/regexlib-SFA.txt");
+		FileReader regexFile = new FileReader(REGEX_FILE);
 		BufferedReader read = new BufferedReader(regexFile);
 		ArrayList<String> regexList = new ArrayList<String>();
 		String line;

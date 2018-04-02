@@ -1,3 +1,5 @@
+package minimization.incremental;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -5,8 +7,11 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
+import minimization.incremental.IncrementalMinimization.EquivTest;
+
 import org.sat4j.specs.TimeoutException;
 
+import structures.DisjointSets;
 import theory.BooleanAlgebra;
 import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
