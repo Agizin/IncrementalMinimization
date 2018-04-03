@@ -31,9 +31,9 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	{
 		protected class EquivRecord
 		{
-			public Integer pState;
-			public Integer qState;
-			public HashSet <List<Integer>> curPath;
+			public final Integer pState;
+			public final Integer qState;
+			public final HashSet <List<Integer>> curPath;
 			
 			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath)
 			{

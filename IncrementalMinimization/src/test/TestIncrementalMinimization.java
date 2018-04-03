@@ -274,8 +274,8 @@ public class TestIncrementalMinimization
 			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
 			System.out.println("Upfront Incremental minimized.");
 			
-			//BFS incremental
-			System.out.println("Starting BFS incremental");
+			//recursive incremental
+			System.out.println("Starting Recursive incremental w/ dependency check");
 			long recStart = System.nanoTime();
 			SFA<CharPred, Character> recursiveMinAut;
 			try
@@ -302,6 +302,35 @@ public class TestIncrementalMinimization
 			}
 			Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, incrMinAut, ba));
 			Assert.assertEquals(recursiveMinAut.stateCount(), incrMinAut.stateCount());
+			
+			//standard incremental w/ dependency check
+			System.out.println("Starting standard incremental w/ dependency check");
+			long depStart = System.nanoTime();
+			SFA<CharPred, Character> depMinAut;
+			try
+			{
+				IncrementalRecursive<CharPred,Character> incrDep = new IncrementalRecursive<CharPred,Character>(aut, ba);
+				depMinAut = incrDep.minimize();
+			}
+			catch(TimeoutException e)
+			{
+				System.out.println("Skipping because of Timeout Exception"); //TODO: does this come up?
+				continue;
+			}
+			Double depTime = ((double)(System.nanoTime() - depStart)/1000000);
+			Assert.assertTrue(depMinAut.stateCount() <= stdMinAut.stateCount());
+			try
+			{
+				Assert.assertTrue(SFA.areEquivalent(depMinAut, stdMinAut, ba));
+			}
+			catch(AssertionError e)
+			{
+				System.out.println(recursiveMinAut);
+				System.out.println(stdMinAut);
+				throw e;
+			}
+			Assert.assertTrue(SFA.areEquivalent(depMinAut, incrMinAut, ba));
+			Assert.assertEquals(depMinAut.stateCount(), incrMinAut.stateCount());
 	
 			String initialStateCount = Integer.toString(aut.stateCount());
 			String transCount = Integer.toString(aut.getTransitionCount());
@@ -316,17 +345,18 @@ public class TestIncrementalMinimization
 			ArrayList<CharPred> predList = new ArrayList<CharPred>(predSet);
 			String mintermCount = Integer.toString(ba.GetMinterms(predList).size());
 			
-			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
+			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
 					initialStateCount, finalStateCount, transCount, predCount, mintermCount,
 					Double.toString(incrTime), Double.toString(stdTime), Double.toString(mooreTime),
-					Double.toString(upfrontTime), Double.toString(recTime));
+					Double.toString(upfrontTime), Double.toString(recTime), Double.toString(depTime));
 			System.out.println(message);
 			messageList.add(message);
 		}
 		FileOutputStream file = new FileOutputStream("compare_test.txt");
 		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write("initial states, final states, transition count, predicate count, minterm count," +
-				"incremental time, standard time, Moore time, upfront incremental time, recursive symbolic incremental \n");
+				"incremental time, standard time, Moore time, upfront incremental time, " +
+				"recursive symbolic incremental, With Dependency check \n");
 		for (String msg : messageList)
 		{
 			writer.write(msg + "\n");
@@ -334,7 +364,7 @@ public class TestIncrementalMinimization
 		writer.close();
 	}
 	
-	@Test
+	//@Test
 	public void testBudget() throws TimeoutException, IOException
 	{
 		//Similar to Regex test, but incremental minimization only given as long as 
@@ -505,7 +535,7 @@ public class TestIncrementalMinimization
 		return y0 + (x-x0)*slope;
 	}
 	
-	@Test
+	//@Test
 	public void testRecord() throws IOException
 	{
 		//TODO: cleanup + document
@@ -741,7 +771,7 @@ public class TestIncrementalMinimization
 		writer.close();
 	}
 	
-	@Test
+	//@Test
 	public void testDepth() throws IOException, TimeoutException
 	{
 		System.out.println("===================");
