@@ -1,0 +1,249 @@
+Search Trace Format
+Timothy H. Heil
+March 16, 2012
+
+INTRODUCTION
+
+Search traces represent a sequence of search commands over data.  The
+trace specifies:
+
+* Data to be searched, including multiple searches on the same data
+* Which contexts (sets of patterns) to search for
+* Dependencies between searches in the form of flows
+
+To define a search, the trace first defines one or more buffers
+of data, and then defines searches on that data.  A search may
+be over part or all of one buffer.
+
+Flows represent the continuation of a search on a new buffer at a
+later time.  Search state is saved at the end of one search,
+and restored for the next search in the same flow.  The search results
+are identical to performing all searches in the flow in a single
+long search.
+
+To define a flow, the trace first defines a flow ID.  The trace
+then defines multiple searches on that flow.
+
+GENERAL FORMAT
+
+See the EXAMPLE FILE at the end of this document for a quick overview
+of the format.
+
+The file format is an ASCII readable format that contains one
+"command" per line.  The first character of the line defines the
+command.
+
+The file format is completely case-insensitive.
+
+A hash sign ('#') starts a comment.  A comment may contain any ASCII
+codes, except carriage return and new line.
+
+Blank lines are ignored.
+
+The maximum legal line length is 1024 bytes, including terminating
+carriage return and line feed.
+
+All identifiers are C-like identifiers, made up of letters, digits,
+and the underscore ('_').  Identifiers may not start with a digit.  
+
+ID's are case insensitive.  All identifiers must be 128B long or less.
+
+Flow IDs and Buffer IDs are different name spaces.  It is legal to
+have flows and buffers with the same name.
+
+IDs may be reused after being deleted.
+
+All integers are unsigned 64b values.  The legal range is zero to
+0xffffffffffffffff = 18446744073709551615 inclusive.  All integers
+are expressed in decimal.
+
+Command fields are separated by one or more spaces or tabs.
+
+Whitespace is permitted at the start and end of each line.
+
+COMMANDS
+
+V <Version>
+
+   Indicates the file format and version.
+
+   <Version> follows ID syntax.
+
+   This must be the first line of the file.
+   The current and only legal version is "SEARCH_TRACE_1_0"
+   Like everything else, the version is case insensitive.
+   The trace reader should make sure the version string is a version/format 
+    that it understands.
+
+   The V command can occur multiple times in a file.  This allows
+   traces to be concatonated easily.  This implies, in theory, that
+   the format version can change in the middle of a file.
+
+B <Buffer_ID>
+
+   Define a new data buffer
+
+   Buffer_ID may be '-', in which case it is an "anonymous" buffer.
+   Anonymous buffers can only be referenced by the "-" feature in the
+   search commands (S, N, T).  Anonymous buffers are deleted
+   automatically as soon as the next buffer is defined.
+
+Q  <Buffer_ID>
+
+   Delete a buffer
+
+   This should be done as soon as the writer knows there are no more
+   searches on a named buffer.  This allows the reader to free the
+   memory used for the buffer.
+
+   Anonymous buffers cannot be explicitly deleted with the Q command.
+
+D  <Data...>
+
+   Specify data
+
+   The data bytes in the buffer are specified following the B command.
+   Any other command terminates the list of data bytes for the buffer.
+   The size of the buffer is implied by the amount of data in the
+   following D commands.  D commands may only be placed after a B
+   command.
+
+   Bytes are encoded as pairs of hex digits.  Hex digits must come in
+   pairs -- small ASCII values may not be encoded with a single digit.
+
+   One or more bytes can be specified per line, up to the line size limit.  
+   The pairs can be separated by spaces/tabs, but this is not necessary.
+
+   The following conventions make files more readable, but are not
+   required for correctness:
+
+     * 16 bytes per D command (excepting the final one for a buffer).
+     * One space between every bytes
+     * Place a comment at the end of the line giving the 
+       ASCII form of the bytes.
+
+   Note : Zero byte buffers are allowed (no D commands), but zero-byte
+   D commands are not.
+
+F  <Flow_ID>
+
+   Define a new flow
+
+   The flow ID can be referenced by later search commands.  See N and T
+   below.
+
+S  <context> <start>  <len> (<Buffer_ID>|-)
+
+   Search - Not part of flow
+
+   <context> is the context to search.  It may be an integer or an ID.
+
+   <start> and <len> define the position and length of the search within
+   the buffer.  Both are decimal integers.
+
+   The first byte in the buffer is 0.  The searched range must be
+   within the buffer.  Zero-byte scans (<len> = 0) are allowed.
+
+   If buffer ID is "-", then the most recently defined buffer (anonymous
+   or not) is used.  Note that it is an error to use "-" if the most
+   recently defined buffer has been deleted with the Q command.
+
+   Search state is neither restored nor saved, since the search
+   is not part of a flow.
+
+N  <context> <start>  <len> (<Buffer_ID>|-) <Flow_ID>
+
+   Search - Next search in flow.
+
+   If Flow_ID has not been defined, this command will define it.
+   No explicit F command is required.
+
+   If this is not the first search in the flow, search state will be
+   restored from the flow ID.
+
+   Search state will be saved to the flow ID.
+
+T  <context> <start>  <len> (<Buffer_ID>|-) <Flow_ID>
+
+   Search - Terminate flow.
+
+   Continue searching in a flow, and terminate the flow.  No more
+   searches will be allowed to the flow.  This allows the trace reader
+   to deallocate state associated with the flow. It also allows
+   end-anchored ('$') patterns to be properly reported.
+
+   The Flow_ID must be defined or it is an error.  It is illegal to
+   define and terminate a flow in the same search.  This would be
+   equivalent to S, which should be used instead.
+
+   If this is not the first search in the flow, search state will be
+   restored from the flow ID.
+
+   Search state will not be saved.
+
+   The flow ID will be deleted.
+
+X  Flow_ID
+
+   Terminate flow
+
+   The flow ID will be deleted.
+
+   Most applications are expected to use T.  In some cases, the writer
+   may not know until later that a flow terminates, or a flow may
+   terminate unexpectedly.
+
+   Note that end-anchored patterns ('$') would not be reported when X is
+   used.  It maybe more appropriate to use a 0-length T command to
+   terminate the flow.
+
+EXAMPLE FILE
+
+=========================================================================
+V SEARCH_TRACE_1_0   # Must have the version line on the first line.
+
+# Define an anonymous 10B Buffer
+B -
+D 50 30 43 51 55 44 44 43 52 48                    # P0CQUDDCRH      
+
+# Scan the first 5B with context C1
+S C1 0 5 -
+
+# Scan the second 5B with context C2
+S C2 5 5 -
+
+#-------------------------------------------------------------------------
+
+B B1 # Define a buffer named B1, containing 32B
+D 44495674 57745851  # DIVtWtXQ
+D 725a5356 4c513342  # rZSVLQ3B
+D 49234b61 6d724334  # I.KamrC4
+D 36796437 67786244  # 6yd7gxbD
+
+B B2 # Define a second buffer B2, containing 20B
+D 4b4f3176 6e56626f 3959695a 7946666d  # KO1vnVbo9YiZyFfm
+D 306c616c                             # 0lal
+
+# Scan with contexts 100 and 101
+
+s 101 0 32 b1
+s 101 0 20 b2
+s 102 0 32 b1
+s 102 0 20  -     # '-' = B2, the most recently defined buffer
+
+#-------------------------------------------------------------------------
+
+F Flow_1  # Define flow Flow_1
+N 201 0 32 b1 Flow_1   # Search B1
+
+N 202 0 32 B1 Flow_2   # Implicit definition of Flow_2
+
+T 201 0 20 b2 Flow_1   # Continue searching B2 and terminate Flow 1
+
+X Flow_2               # Delayed/unexpected termination of Flow_2
+
+# Delete buffers
+Q B1
+Q B2
+
+=========================================================================

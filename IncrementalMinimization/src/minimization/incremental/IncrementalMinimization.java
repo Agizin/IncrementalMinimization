@@ -34,12 +34,19 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 			public final Integer pState;
 			public final Integer qState;
 			public final HashSet <List<Integer>> curPath;
+			public final HashSet <List<Integer>> curEquiv;
 			
-			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath)
+			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath, HashSet<List<Integer>> curEquiv)
 			{
 				this.pState = p;
 				this.qState = q;
 				this.curPath = curPath;
+				this.curEquiv = curEquiv;
+			}
+			
+			public String toString()
+			{
+				return normalize(pState,qState).toString();
 			}
 		}
 		
@@ -84,7 +91,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 			{
 				return false;
 			}
-			EquivRecord start = new EquivRecord(pStart,qStart,path);
+			EquivRecord start = new EquivRecord(pStart,qStart,path,equiv);
 			Stack<EquivRecord> testStack = new Stack<EquivRecord>();
 			testStack.add(start);
 			while (!testStack.isEmpty())
@@ -93,6 +100,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 				Integer p = curEquivTest.pState;
 				Integer q = curEquivTest.qState;
 				HashSet<List<Integer>> curPath = curEquivTest.curPath;
+				HashSet<List<Integer>> curEquiv = curEquivTest.curEquiv;
 				List<Integer> pair = normalize(p,q);
 				HashSet<List<Integer>> newPath = new HashSet<List<Integer>>(curPath);
 				newPath.add(pair);
@@ -110,7 +118,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 					Integer pNextClass = equivClasses.find(pMove.to);
 					Integer qNextClass = equivClasses.find(qMove.to);
 					List<Integer> nextPair = normalize(pNextClass, qNextClass);
-					if(!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
+					if(!pNextClass.equals(qNextClass) && !curEquiv.contains(nextPair))
 					{
 						if(isKnownNotEqual(pNextClass,qNextClass))
 						{
@@ -119,8 +127,10 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 						}
 						if (!newPath.contains(nextPair))
 						{
-							equiv.add(nextPair); 
-							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
+							HashSet<List<Integer>> nextEquiv = new HashSet<List<Integer>>(equiv);
+							equiv.add(nextPair);
+							nextEquiv.add(nextPair); 
+							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath, nextEquiv);
 							testStack.push(nextTest);
 						}
 					}
@@ -182,7 +192,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	protected final BooleanAlgebra<P,S> ba;
 	protected final int num_pairs;
 	
-	private HashSet<List<Integer>> neq;
+	protected HashSet<List<Integer>> neq;
 	private LinkedHashMap<Integer, Integer> distanceToFinalMap;
 	private StateComparator stateComp;
 	private Long startTime;

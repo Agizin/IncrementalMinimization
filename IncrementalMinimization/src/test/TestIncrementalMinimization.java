@@ -3,6 +3,7 @@ import static org.junit.Assert.*;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
@@ -17,6 +18,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
@@ -24,6 +26,7 @@ import java.util.TreeMap;
 
 import minimization.DebugException;
 import minimization.MooreMinimization;
+import minimization.incremental.IncrWithDependencyChecks;
 import minimization.incremental.IncrementalMinimization;
 import minimization.incremental.IncrementalNaive;
 import minimization.incremental.IncrementalRecursive;
@@ -48,7 +51,7 @@ import automata.sfa.SFAMove;
 
 public class TestIncrementalMinimization 
 {
-	public static final String REGEX_FILE = "src/test/regexlib-SFA.txt";
+	public static final String REGEX_FILE = "regex/regexlib-SFA.txt";
 
 	@Test
 	public void testMyAut() throws TimeoutException
@@ -309,12 +312,16 @@ public class TestIncrementalMinimization
 			SFA<CharPred, Character> depMinAut;
 			try
 			{
-				IncrementalRecursive<CharPred,Character> incrDep = new IncrementalRecursive<CharPred,Character>(aut, ba);
+				IncrWithDependencyChecks<CharPred,Character> incrDep = new IncrWithDependencyChecks<CharPred,Character>(aut, ba);
 				depMinAut = incrDep.minimize();
 			}
 			catch(TimeoutException e)
 			{
 				System.out.println("Skipping because of Timeout Exception"); //TODO: does this come up?
+				continue;
+			}
+			catch(OutOfMemoryError e)
+			{
 				continue;
 			}
 			Double depTime = ((double)(System.nanoTime() - depStart)/1000000);
@@ -325,7 +332,7 @@ public class TestIncrementalMinimization
 			}
 			catch(AssertionError e)
 			{
-				System.out.println(recursiveMinAut);
+				System.out.println(depMinAut);
 				System.out.println(stdMinAut);
 				throw e;
 			}
@@ -350,6 +357,7 @@ public class TestIncrementalMinimization
 					Double.toString(incrTime), Double.toString(stdTime), Double.toString(mooreTime),
 					Double.toString(upfrontTime), Double.toString(recTime), Double.toString(depTime));
 			System.out.println(message);
+			System.out.println("");
 			messageList.add(message);
 		}
 		FileOutputStream file = new FileOutputStream("compare_test.txt");
@@ -862,6 +870,128 @@ public class TestIncrementalMinimization
 		}
 		writer.close();
 		
+	}
+	
+	//@Test
+	public void test_powerEN_patterns() throws IOException, TimeoutException
+	{
+		System.out.println("======================");
+		System.out.println("STARTING powerEN TEST");
+		System.out.println("======================");
+		File dir = new File("regex/PowerEN_PME/cmplex/multi_ctx/patterns");
+		Assert.assertTrue(dir.isDirectory());
+		File[] pattern_files = dir.listFiles();
+		System.out.println(dir);
+		List<String> allRegex = new LinkedList<String>();
+		for(File pattern_file : pattern_files)
+		{
+			FileReader pattern_reader = new FileReader(pattern_file);
+			BufferedReader read = new BufferedReader(pattern_reader);
+			LinkedList<String> patternList = new LinkedList<String>();
+			String line;
+			while(true)
+			{
+				line = read.readLine();
+				if(line == null)
+				{
+					break;
+				}
+				else if (line.equals(""))
+				{
+					continue;
+				}
+				int spaceIndex = line.indexOf(" ");
+				if(spaceIndex != -1) //indicates the line contains a space - not a regex
+				{
+					continue;
+				}
+				patternList.add(line);
+			}
+			allRegex.addAll(patternList);
+		}
+		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
+		long timeout = 3600000;
+		ArrayList<String> messageList = new ArrayList<String>();
+		for(String regex : allRegex)
+		{
+			SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
+			try
+			{
+				aut = aut.determinize(ba, timeout);
+				aut = aut.mkTotal(ba);
+			}
+			catch(TimeoutException e)
+			{
+				continue;
+			}
+			catch(OutOfMemoryError e)
+			{
+				System.gc();
+				continue;
+			}
+			System.out.println("Determinized.");
+			//standard minimization
+			long stdStart = System.nanoTime();
+			SFA<CharPred, Character> stdMinAut;
+			stdMinAut = aut.minimize(ba);
+			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000000);
+			System.out.println("Standard minimized.");
+			
+			//incremental minimization
+			System.out.println("Starting incremental minimization");
+			long incrStart = System.nanoTime();
+			SFA<CharPred, Character> incrMinAut;
+			try
+			{
+				IncrementalMinimization<CharPred,Character> incrMin = new IncrementalMinimization<CharPred,Character>(aut, ba);
+				incrMinAut = incrMin.minimize();
+			}
+			catch(TimeoutException e)
+			{
+				System.out.println("Skipping because of Timeout Exception"); //TODO Debug
+				continue;
+			}
+			/*catch(OutOfMemoryError e)
+			{
+				System.out.println("Skipping because out of heap space"); //TODO Debug
+				continue;
+			}*/
+			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000000);
+			Assert.assertTrue(incrMinAut.isDeterministic(ba));
+			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
+			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
+			System.out.println("Incremental minimized.");
+			
+			String initialStateCount = Integer.toString(aut.stateCount());
+			String transCount = Integer.toString(aut.getTransitionCount());
+			String finalStateCount = Integer.toString(stdMinAut.stateCount());
+			
+			HashSet<CharPred> predSet = new HashSet<CharPred>();
+			for(SFAInputMove<CharPred, Character> t : aut.getInputMovesFrom(aut.getStates()))
+			{
+				predSet.add(t.guard);
+			}
+			String predCount = Integer.toString(predSet.size());
+			ArrayList<CharPred> predList = new ArrayList<CharPred>(predSet);
+			String mintermCount = Integer.toString(ba.GetMinterms(predList).size());
+			
+			String message = String.format("%s, %s, %s, %s, %s, %s, %s",
+					initialStateCount, finalStateCount, transCount, predCount, mintermCount,
+					Double.toString(incrTime), Double.toString(stdTime));
+			System.out.println(message);
+			messageList.add(message);
+		}
+		FileOutputStream file = new FileOutputStream("powerEN_test.txt");
+		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
+		writer.write("initial states, final states, transition count, predicate count, minterm count," +
+				"incremental time, standard time, Moore time, upfront incremental time, " +
+				"recursive symbolic incremental, With Dependency check \n");
+		for (String msg : messageList)
+		{
+			writer.write(msg + "\n");
+		}
+		writer.close();
+
 	}
 
 }

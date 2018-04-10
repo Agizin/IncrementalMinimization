@@ -138,6 +138,8 @@ public class IncrementalRecursive<P,S> extends IncrementalMinimization<P,S>
 		}
 		
 		private HashMap<List<Integer>, ResultDependencies> equivDepends;
+		private boolean merged;
+		private HashSet<List<Integer>> mergedStates;
 		
 		public EquivTestRecursive(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
 				HashSet<List<Integer>> path)
@@ -225,6 +227,8 @@ public class IncrementalRecursive<P,S> extends IncrementalMinimization<P,S>
 			if(thisResult.resultIsIndependent())
 			{
 				equivClasses.union(p,q);
+				this.merged = true;
+				this.mergedStates.add(pair);
 			}
 			else
 			{
@@ -237,8 +241,15 @@ public class IncrementalRecursive<P,S> extends IncrementalMinimization<P,S>
 		@Override
 		public boolean isEquiv(Integer pStart, Integer qStart) throws TimeoutException
 		{
+			this.merged = false;
+			this.mergedStates = new HashSet<List<Integer>>();
 			ResultDependencies finalResult = isEquivRecursive(pStart, qStart);
-			return finalResult.isEquiv();
+			boolean bool = finalResult.isEquiv();
+			if(!bool & merged)
+			{
+				System.out.println("onepokoXXXXXXXXXXXXXXXXXXxxxxxxxxx: " + normalize(pStart,qStart).toString() + ", " + mergedStates.toString());
+			}
+			return bool;
 		}
 	}
 	
