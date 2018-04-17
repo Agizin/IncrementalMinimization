@@ -34,14 +34,12 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 			public final Integer pState;
 			public final Integer qState;
 			public final HashSet <List<Integer>> curPath;
-			public final HashSet <List<Integer>> curEquiv;
 			
-			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath, HashSet<List<Integer>> curEquiv)
+			public EquivRecord(Integer p, Integer q, HashSet<List<Integer>> curPath)
 			{
 				this.pState = p;
 				this.qState = q;
 				this.curPath = curPath;
-				this.curEquiv = curEquiv;
 			}
 			
 			public String toString()
@@ -91,7 +89,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 			{
 				return false;
 			}
-			EquivRecord start = new EquivRecord(pStart,qStart,path,equiv);
+			EquivRecord start = new EquivRecord(pStart,qStart,path);
 			Stack<EquivRecord> testStack = new Stack<EquivRecord>();
 			testStack.add(start);
 			while (!testStack.isEmpty())
@@ -100,7 +98,6 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 				Integer p = curEquivTest.pState;
 				Integer q = curEquivTest.qState;
 				HashSet<List<Integer>> curPath = curEquivTest.curPath;
-				HashSet<List<Integer>> curEquiv = curEquivTest.curEquiv;
 				List<Integer> pair = normalize(p,q);
 				HashSet<List<Integer>> newPath = new HashSet<List<Integer>>(curPath);
 				newPath.add(pair);
@@ -118,7 +115,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 					Integer pNextClass = equivClasses.find(pMove.to);
 					Integer qNextClass = equivClasses.find(qMove.to);
 					List<Integer> nextPair = normalize(pNextClass, qNextClass);
-					if(!pNextClass.equals(qNextClass) && !curEquiv.contains(nextPair))
+					if(!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
 					{
 						if(isKnownNotEqual(pNextClass,qNextClass))
 						{
@@ -127,10 +124,8 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 						}
 						if (!newPath.contains(nextPair))
 						{
-							HashSet<List<Integer>> nextEquiv = new HashSet<List<Integer>>(equiv);
 							equiv.add(nextPair);
-							nextEquiv.add(nextPair); 
-							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath, nextEquiv);
+							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
 							testStack.push(nextTest);
 						}
 					}
@@ -176,7 +171,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	{
 		public int compare(Integer a, Integer b)
 		{
-			int diff = distanceToFinalMap.get(a) - distanceToFinalMap.get(b);
+			int diff = getStateDistanceToFinal(a) - getStateDistanceToFinal(b);
 			if (diff == 0)
 			{
 				return a - b;
@@ -193,7 +188,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	protected final int num_pairs;
 	
 	protected HashSet<List<Integer>> neq;
-	private LinkedHashMap<Integer, Integer> distanceToFinalMap;
+	private LinkedHashMap<Integer, Integer> distanceToFinalMap; //maps states to distance from final state, does not contain sink states
 	private StateComparator stateComp;
 	private Long startTime;
 	private LinkedHashMap<Long, Integer> record; //maps time stamps to number of states
@@ -219,57 +214,28 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	
 	private LinkedHashMap<Integer, Integer> generateDistanceToFinalMap()
 	{
-		class StateInfo
-		{
-			public final Integer stateID;
-			public final Integer distanceToFinal;
-			
-			public StateInfo(Integer stateID, Integer distanceToFinal)
-			{
-				this.stateID = stateID;
-				this.distanceToFinal = distanceToFinal;
-			}
-			
-			public String toString()
-			{
-				return String.format("(%d, %d)", stateID, distanceToFinal);
-			}
-		}
-		
 		LinkedHashMap<Integer, Integer> distanceMap = new LinkedHashMap<Integer, Integer>();
-		HashSet<Integer> visitedStates = new HashSet<Integer>();
-		Queue<StateInfo> stateQueue = new LinkedList<StateInfo>();
+		Queue<Integer> stateQueue = new LinkedList<Integer>();
 		
 		for(Integer finalState : aut.getFinalStates())
 		{
-			stateQueue.add(new StateInfo(finalState, 0));
-			visitedStates.add(finalState);
+			stateQueue.add(finalState);
+			distanceMap.put(finalState, 0);
 		}
 		while(!stateQueue.isEmpty())
 		{
-			StateInfo s = stateQueue.poll();
-			distanceMap.put(s.stateID, s.distanceToFinal);
-			Integer nextDistance = s.distanceToFinal + 1;
-			for (SFAInputMove<P,S> t : aut.getInputMovesTo(s.stateID))
+			Integer state = stateQueue.remove();
+			Integer distance = distanceMap.get(state);
+			for(SFAInputMove<P,S> t : aut.getInputMovesTo(state))
 			{
-				Integer nextState = t.from;
-				if(!visitedStates.contains(nextState))
+				Integer prevState = t.from;
+				if(!distanceMap.containsKey(prevState))
 				{
-					stateQueue.add(new StateInfo(nextState, nextDistance));
-					visitedStates.add(nextState);
+					distanceMap.put(prevState, distance+1);
+					stateQueue.add(prevState);
 				}
 			}
 		}
-		
-		for(Integer state : aut.getNonFinalStates())
-		{
-			if (!visitedStates.contains(state))
-			{
-				assert(!distanceMap.containsKey(state)); //TODO: remove this
-				distanceMap.put(state, Integer.MAX_VALUE); //indicates sink state
-			}
-		}
-		
 		return distanceMap;
 	}
 	
@@ -294,6 +260,18 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 		return pair;
 	}
 	
+	protected Integer getStateDistanceToFinal(Integer state)
+	{
+		if(distanceToFinalMap.containsKey(state))
+		{
+			return distanceToFinalMap.get(state);
+		}
+		else
+		{
+			return Integer.MAX_VALUE;
+		}
+	}
+	
 	protected boolean isKnownNotEqual(Integer p, Integer q)
 	{
 		List<Integer> normalizedPair = normalize(p,q);
@@ -301,7 +279,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 		{
 			return true;
 		}
-		else if (!distanceToFinalMap.get(p).equals(distanceToFinalMap.get(q)))
+		else if (!getStateDistanceToFinal(p).equals(getStateDistanceToFinal(q)))
 		{
 			neq.add(normalizedPair);
 			return true;
@@ -382,13 +360,13 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 		{
 			equivClasses.make(q);
 		}
-		for(Integer p : distanceToFinalMap.keySet())
+		for(Integer p : aut.getStates())
 		{
-			for(Integer q : distanceToFinalMap.keySet())
+			for(Integer q : aut.getStates())
 			{
 				if(stateComp.compare(q,p) <= 0)
 				{
-					if (distanceToFinalMap.get(p) < distanceToFinalMap.get(q))
+					if (getStateDistanceToFinal(p) < getStateDistanceToFinal(q))
 					{
 						break; //All later qs will be inequivalent
 					}

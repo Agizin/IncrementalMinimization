@@ -4,6 +4,7 @@ import sys
 xAxis = "Number of States"
 yAxis = "Average Minimization Time (ms)"
 title = "Comparison of SFA Minimization Algorithms"
+scale = "log"
 
 testsfile = sys.argv[1]
 xIndex = int(sys.argv[2])
@@ -52,7 +53,7 @@ xData = [row[xIndex] for row in fData if row[xIndex] <= cutoff]
 for i in graph_indices:
     graphData = [row[i] for row in fData[:len(xData)]]
     pyplot.plot(xData, graphData, label=title_row[i], linewidth=1.0)
-pyplot.yscale("log")
+pyplot.yscale(scale)
 pyplot.legend(loc=0)
 pyplot.xlabel(xAxis)
 pyplot.ylabel(yAxis)

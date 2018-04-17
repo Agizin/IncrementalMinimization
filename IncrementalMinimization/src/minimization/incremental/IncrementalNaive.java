@@ -52,7 +52,7 @@ public class IncrementalNaive<P,S> extends IncrementalMinimization<P,S>
 			{
 				return false;
 			}
-			EquivRecord start = new EquivRecord(pStart,qStart,path,equiv);
+			EquivRecord start = new EquivRecord(pStart,qStart,path);
 			Stack<EquivRecord> testStack = new Stack<EquivRecord>();
 			testStack.add(start);
 			while (!testStack.isEmpty())
@@ -79,7 +79,7 @@ public class IncrementalNaive<P,S> extends IncrementalMinimization<P,S>
 						if(!newPath.contains(nextPair))
 						{
 							equiv.add(nextPair);
-							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath,equiv);
+							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
 							testStack.push(nextTest);
 						}
 					}

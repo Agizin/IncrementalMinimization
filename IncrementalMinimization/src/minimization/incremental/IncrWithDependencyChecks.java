@@ -140,61 +140,6 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 				}
 				assert(depEntry != null);
 				pairEntry.addDependency(depEntry);
-				
-				
-				/*
-				//System.out.println("");
-				//System.out.println(String.format("Adding %s to %s", dependency.toString(), pair.toString()));
-				if(dependencies.containsKey(dependency) && !pair.equals(dependency))
-				{
-					//System.out.println("Already seen dependency");
-					//Dependency is transitive. So, we flatten the dependency list as much as possible before adding.
-					/*ArrayList<List<Integer>> flatDependencyList = new ArrayList<List<Integer>>();
-					Queue<List<Integer>> nestedDepQueue = new LinkedList<List<Integer>>();
-					nestedDepQueue.addAll(dependencies.get(dependency));
-					//System.out.println(String.format("Deps of dep: %s", nestedDepQueue.toString()));
-					HashSet<List<Integer>> debugTest = new HashSet<List<Integer>>(); //TODO: remove. using to check that no infinite loops exist.
-					while(!nestedDepQueue.isEmpty())
-					{
-						//System.out.println(nestedDepQueue);
-						System.out.println(String.format("ndq: %d / %d", debugTest.size(), num_pairs));
-						List<Integer> dep = nestedDepQueue.remove();
-						if(debugTest.contains(dep))
-						{
-							continue;
-						}
-						else if(dependencies.containsKey(dep))
-						{
-							nestedDepQueue.addAll(dependencies.get(dep));
-						}
-						else
-						{
-							flatDependencyList.add(dep);
-						}
-						debugTest.add(dep);
-					}
-					ArrayList<List<Integer>> flatDependencyList = dependencies.get(dependency);
-					if(!dependencies.containsKey(pair))
-					{
-						dependencies.put(pair, new ArrayList<List<Integer>>());
-					}
-					dependencies.get(pair).addAll(flatDependencyList);
-				}
-				else
-				{
-					if(!dependencies.containsKey(pair))
-					{
-						dependencies.put(pair, new ArrayList<List<Integer>>());
-					}
-					dependencies.get(pair).add(dependency);
-				}
-				System.out.println(dependency);
-				assert(dependencies.containsKey(dependency));
-				if(!dependencies.containsKey(pair))
-				{
-					dependencies.put(pair, new ArrayList<List<Integer>>());
-				}
-				dependencies.get(pair).add(dependency); */
 			}
 			
 			public void addAllDependencies(List<Integer> pair, ArrayList<List<Integer>> dpairs)
@@ -205,7 +150,7 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 				}
 			}
 			
-			private void mergePair(StatePair pairEntry, HashSet<List<Integer>> badPath)
+			private void mergePair(StatePair pairEntry, HashSet<List<Integer>> badPath) throws TimeoutException
 			{
 				
 				Queue<StatePair> depQueue = new LinkedList<StatePair>();
@@ -232,11 +177,11 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 					assert(pairLookup.values().contains(dep));
 					depQueue.addAll(dep.getDependencies());
 				}
-				System.out.println("SQUIBLLITY DOOP BOP");
+				System.out.println("SQUIBLLITY DOOP BOP"); //unique string for debug purposes
 				equivClasses.union(pairEntry.pair.get(0), pairEntry.pair.get(1));
 			}
 			
-			public void mergeStates(HashSet<List<Integer>> badPath)
+			public void mergeStates(HashSet<List<Integer>> badPath) throws TimeoutException
 			{
 				for(StatePair pairEntry : pairLookup.values())
 				{
@@ -259,6 +204,13 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 		private Dependencies deps;
 		
 		public EquivTestDependency (DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
+				HashSet<List<Integer>> path, Dependencies deps)
+		{
+			super(equivClasses, equiv, path);
+			this.deps = deps;
+		}
+		
+		public EquivTestDependency (DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
 				HashSet<List<Integer>> path)
 		{
 			super(equivClasses, equiv, path);
@@ -272,7 +224,7 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 			{
 				return false;
 			}
-			EquivRecord start = new EquivRecord(pStart,qStart,path,equiv);
+			EquivRecord start = new EquivRecord(pStart,qStart,path);
 			Stack<EquivRecord> testStack = new Stack<EquivRecord>();
 			testStack.add(start);
 			while (!testStack.isEmpty())
@@ -281,7 +233,6 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 				Integer p = curEquivTest.pState;
 				Integer q = curEquivTest.qState;
 				HashSet<List<Integer>> curPath = curEquivTest.curPath;
-				HashSet<List<Integer>> curEquiv = curEquivTest.curEquiv;
 				List<Integer> pair = normalize(p,q);
 				HashSet<List<Integer>> newPath = new HashSet<List<Integer>>(curPath);
 				newPath.add(pair);
@@ -295,29 +246,29 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 					Integer pNextClass = equivClasses.find(pMove.to);
 					Integer qNextClass = equivClasses.find(qMove.to);
 					List<Integer> nextPair = normalize(pNextClass, qNextClass);
-					if(!pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
+					if(equiv.contains(nextPair) || path.contains(nextPair))
+					{
+						deps.addDependency(pair, nextPair);
+					}
+					else if(!pNextClass.equals(qNextClass))
 					{
 						if(isKnownNotEqual(pNextClass,qNextClass))
 						{
-
 							newPath.add(nextPair);
+							for(List<Integer> pathPair : path)
+							{
+								neq.add(pathPair); //TODO: remove this call from outer minimize method
+							}
 							this.path = newPath;
 							deps.mergeStates(newPath);
 							return false;
 						}
-						if (!newPath.contains(nextPair))
+						else
 						{
-							HashSet<List<Integer>> nextEquiv = new HashSet<List<Integer>>(curEquiv);
 							equiv.add(nextPair);
-							nextEquiv.add(nextPair); 
-							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath, nextEquiv);
-							testStack.push(nextTest);
-							deps.addDependency(pair, nextPair);
+							EquivRecord nextTest = new EquivRecord(pNextClass, qNextClass, newPath);
+							testStack.add(nextTest);
 						}
-					}
-					else if(equiv.contains(nextPair))
-					{
-						deps.addDependency(pair, nextPair);
 					}
 					outp.remove(pMove);
 					outq.remove(qMove);
@@ -332,7 +283,6 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 						outq.add(new SFAInputMove<P,S>(qMove.from, qMove.to, newQGuard));
 					}
 				}
-				//deps.satisfyDependency(pair);
 			}
 			equiv.add(normalize(pStart, qStart));
 			return true;
