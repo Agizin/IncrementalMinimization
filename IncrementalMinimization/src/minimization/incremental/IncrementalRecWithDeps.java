@@ -18,14 +18,17 @@ import automata.sfa.SFA;
 import automata.sfa.SFAInputMove;
 
 
-public class IncrementalRecursive<P,S> extends IncrementalMinimization<P,S>
+public class IncrementalRecWithDeps<P,S> extends IncrementalMinimization<P,S>
 {
 	private class EquivTestRecursive extends EquivTest
 	{
+		private DependencyGraph deps;
+		
 		public EquivTestRecursive(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> equiv, 
 				HashSet<List<Integer>> path)
 		{
 			super(equivClasses, equiv, path);
+			this.deps = new DependencyGraph();
 		}
 		
 		public boolean isEquivRecursive(Integer p, Integer q) throws TimeoutException
@@ -51,6 +54,10 @@ public class IncrementalRecursive<P,S> extends IncrementalMinimization<P,S>
 				Integer pNextClass = equivClasses.find(pMove.to);
 				Integer qNextClass = equivClasses.find(qMove.to);
 				List<Integer> nextPair = normalize(pNextClass, qNextClass);
+				if(equiv.contains(nextPair) || path.contains(nextPair))
+				{
+					deps.addDependency(pair, nextPair);
+				}
 				if ( !pNextClass.equals(qNextClass) && !equiv.contains(nextPair))
 				{
 					equiv.add(nextPair);
@@ -81,11 +88,19 @@ public class IncrementalRecursive<P,S> extends IncrementalMinimization<P,S>
 		public boolean isEquiv(Integer pStart, Integer qStart) throws TimeoutException
 		{
 			boolean finalResult = isEquivRecursive(pStart, qStart);
+			if(!finalResult)
+			{
+				int mergeResults = deps.mergeStates(equivClasses, path);
+				if(mergeResults > 0)
+				{
+					System.out.println(String.format("Recursive alg merged %d pairs", mergeResults));
+				}
+			}
 			return finalResult;
 		}
 	}
 	
-	public IncrementalRecursive(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
+	public IncrementalRecWithDeps(SFA<P,S> aut, BooleanAlgebra<P,S> ba) throws TimeoutException
 	{
 		super(aut,ba);
 	}

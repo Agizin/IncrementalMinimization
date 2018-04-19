@@ -25,7 +25,7 @@ public class MooreMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	private SFA<P,S> aut;
 	private BooleanAlgebra<P,S> ba;
 
-	private MooreMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba)
+	public MooreMinimization(SFA<P,S> aut, BooleanAlgebra<P,S> ba)
 	{
 		this.aut = aut;
 		this.ba = ba;

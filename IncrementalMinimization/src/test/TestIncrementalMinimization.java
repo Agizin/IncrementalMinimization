@@ -26,10 +26,13 @@ import java.util.TreeMap;
 
 
 import minimization.DebugException;
+import minimization.MinimizationAlgorithm;
 import minimization.MooreMinimization;
+import minimization.incremental.IncrSimpleNEQ;
 import minimization.incremental.IncrWithDependencyChecks;
 import minimization.incremental.IncrementalMinimization;
 import minimization.incremental.IncrementalNaive;
+import minimization.incremental.IncrementalRecWithDeps;
 import minimization.incremental.IncrementalRecursive;
 import minimization.incremental.TimeBudgetExceededException;
 
@@ -53,6 +56,7 @@ import automata.sfa.SFAMove;
 public class TestIncrementalMinimization 
 {
 	public static final String REGEXLIB_FILE = "regex/regexlib-SFA.txt";
+	public static final int TRIAL_COUNT = 10;
 
 	@Test
 	public void testMyAut() throws TimeoutException
@@ -153,6 +157,57 @@ public class TestIncrementalMinimization
 		Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
 	}
 	
+	private <P,S> Double testMin(MinimizationAlgorithm<P,S> minAlg, SFA<P,S> stdMinAut, BooleanAlgebra<P,S> ba, 
+			Long startTime) throws TimeoutException
+	{
+		SFA<P,S> minAut = null;
+		try 
+		{
+			minAut = minAlg.minimize();
+		} 
+		catch (DebugException e) 
+		{
+			//This should never happen here
+		}
+		Double finishTime = ((double)(System.nanoTime() - startTime)/1000000);
+		//System.out.println(stdMinAut);
+		//System.out.println(minAut);
+		Assert.assertNotNull(minAut);
+		Assert.assertTrue(SFA.areEquivalent(minAut, stdMinAut, ba));
+		Assert.assertTrue(minAut.stateCount() <= stdMinAut.stateCount());
+		Assert.assertTrue(minAut.isDeterministic(ba));
+		return finishTime;
+	}
+	
+	@Test
+	public void testDep() throws TimeoutException
+	{
+		String regex = "(\\s*\\S*){2}(ipsum)(\\S*\\s*){2}";
+		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
+		SFA<CharPred, Character> aut = (new SFAprovider(regex, ba)).getSFA();
+		aut = aut.determinize(ba);
+		aut = aut.mkTotal(ba);
+		SFA<CharPred, Character> stdMinAut = aut.minimize(ba);
+		long startTime = System.nanoTime();
+		IncrementalMinimization<CharPred, Character> depMin = new IncrWithDependencyChecks<CharPred, Character>(aut,ba);
+		Double finishTime = testMin(depMin, stdMinAut, ba, startTime);
+		System.out.println(finishTime.toString());		
+	}
+	
+	private double arrayAvg(double[] arr)
+	{
+		if (arr.length <= 0)
+		{
+			throw new IllegalArgumentException("Array must be non-empty");
+		}
+		double sum = 0.0;
+		for(double i : arr)
+		{
+			sum += i;
+		}
+		return sum/arr.length;
+	}
+	
 	private void compareRuntimeFromRegex(List<String> regexList, String outfile) throws TimeoutException, IOException
 	{
 		//Given a list of regex, runs all minimization algorithms on each and output results to the given file.
@@ -178,147 +233,103 @@ public class TestIncrementalMinimization
 				System.gc();
 				continue;
 			}
+			
+			if(aut.stateCount() > 400)
+			{
+				continue;
+			}
 			System.out.println("Determinized");
 			
-			//standard minimization
-			long stdStart = System.nanoTime();
-			SFA<CharPred, Character> stdMinAut;
-			stdMinAut = aut.minimize(ba);
-			Double stdTime = ((double)(System.nanoTime() - stdStart)/1000000);
-			System.out.println("Standard minimized.");
+			System.out.println("Standard minimizing...");
+			double[] stdTimes = new double[TRIAL_COUNT];
+			SFA<CharPred, Character> stdMinAut = null;
+			for(int i = 0; i<TRIAL_COUNT; i++)
+			{
+				long stdStart = System.nanoTime();
+				stdMinAut = aut.minimize(ba);
+				double trialTime = ((double)(System.nanoTime() - stdStart)/1000000);
+				stdTimes[i] = trialTime;
+			}
+			Assert.assertNotNull(stdMinAut);
+			Double stdTime = arrayAvg(stdTimes);
 			
-			//moore minimization
-			long mooreStart = System.nanoTime();
-			SFA<CharPred, Character> mooreMinAut;
-			mooreMinAut = MooreMinimization.mooreMinimize(aut, ba);
-			Double mooreTime = ((double)(System.nanoTime() - mooreStart)/1000000);
-			Assert.assertTrue(SFA.areEquivalent(mooreMinAut, stdMinAut, ba));
-			Assert.assertTrue(mooreMinAut.stateCount() <= stdMinAut.stateCount());
-			System.out.println("Moore minimized.");
+			System.out.println("Moore minimizing...");
+			double[] mooreTimes = new double[TRIAL_COUNT];
+			for(int i = 0; i<TRIAL_COUNT; i++)
+			{
+				long mooreStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> mooreMin = new MooreMinimization<CharPred, Character>(aut, ba);
+				double trialTime = testMin(mooreMin, stdMinAut, ba, mooreStart);
+				mooreTimes[i] = trialTime;
+			}
+			Double mooreTime = arrayAvg(mooreTimes);
 			
 			//incremental minimization
-			System.out.println("Starting incremental minimization");
-			long incrStart = System.nanoTime();
-			SFA<CharPred, Character> incrMinAut;
-			try
+			System.out.println("Starting incremental minimization...");
+			double[] incrTimes = new double[TRIAL_COUNT];
+			for(int i = 0; i<TRIAL_COUNT; i++)
 			{
-				IncrementalMinimization<CharPred,Character> incrMin = new IncrementalMinimization<CharPred,Character>(aut, ba);
-				incrMinAut = incrMin.minimize();
+				long incrStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> incrMin = new IncrementalMinimization<CharPred, Character>(aut, ba);
+				double trialTime = testMin(incrMin, stdMinAut, ba, incrStart);
+				incrTimes[i] = trialTime;
 			}
-			catch(TimeoutException e)
-			{
-				System.out.println("Skipping because of Timeout Exception"); //TODO Debug
-				continue;
-			}
-			/*catch(OutOfMemoryError e)
-			{
-				System.out.println("Skipping because out of heap space"); //TODO Debug
-				continue;
-			}*/
-			Double incrTime = ((double)(System.nanoTime() - incrStart)/1000000);
-			Assert.assertTrue(incrMinAut.isDeterministic(ba));
-			Assert.assertTrue(SFA.areEquivalent(incrMinAut, stdMinAut, ba));
-			Assert.assertTrue(incrMinAut.stateCount() <= stdMinAut.stateCount());
-			System.out.println("Incremental minimized.");
+			Double incrTime = arrayAvg(incrTimes);
 			
+			System.out.println("Starting naive incremental...");
+			double[] upfrontTimes = new double[TRIAL_COUNT];
+			for(int i = 0; i<TRIAL_COUNT; i++)
+			{
+				long naiveStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> naiveMin = new IncrementalNaive<CharPred, Character>(aut, ba);
+				double trialTime = testMin(naiveMin,stdMinAut, ba, naiveStart);
+				upfrontTimes[i] = trialTime;
+			}
+			Double upfrontTime = arrayAvg(upfrontTimes);
 			
-			//DFAized incremental minimization
-			System.out.println("Starting upfront incremental");
-			long incrDFAStart = System.nanoTime();
-			SFA<CharPred, Character> upfrontMinAut;
-			try
+			System.out.println("Starting recursive incremental...");
+			double[] recTimes = new double[TRIAL_COUNT];
+			for(int i = 0; i<TRIAL_COUNT; i++)
 			{
-				IncrementalNaive<CharPred,Character> naiveMin = new IncrementalNaive<CharPred,Character>(aut, ba);
-				upfrontMinAut = naiveMin.minimize();
+				long recStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> recMin = new IncrementalRecursive<CharPred, Character>(aut, ba);
+				double trialTime = testMin(recMin, stdMinAut, ba, recStart);
+				recTimes[i] = trialTime;
 			}
-			catch(TimeoutException e)
-			{
-				System.out.println("Skipping because of Timeout Exception"); //TODO Debug
-				continue;
-			}
-			/*catch(OutOfMemoryError e)
-			{
-				System.out.println("Skipping because out of heap space"); //TODO Debug
-				continue;
-			}*/
-			Double upfrontTime = ((double)(System.nanoTime() - incrDFAStart)/1000000);
-			Assert.assertTrue(upfrontMinAut.stateCount() <= stdMinAut.stateCount());
-			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
-			Assert.assertEquals(upfrontMinAut.stateCount(), incrMinAut.stateCount());
-			/*try
-			{
-				Assert.assertTrue(upfrontMinAut.stateCount() == incrMinAut.stateCount());
-			}
-			catch(AssertionError e)
-			{
-				System.out.println(upfrontMinAut.stateCount());
-				System.out.println(incrMinAut.stateCount());
-				throw(e);
-			}*/
-			Assert.assertTrue(SFA.areEquivalent(upfrontMinAut, stdMinAut, ba));
-			System.out.println("Upfront Incremental minimized.");
+			Double recTime = arrayAvg(recTimes);
 			
-			//recursive incremental
-			System.out.println("Starting Recursive incremental w/ dependency check");
-			long recStart = System.nanoTime();
-			SFA<CharPred, Character> recursiveMinAut;
-			try
+			System.out.println("Starting recursive incremental w/ dependency check...");
+			double[] recDepTimes = new double[TRIAL_COUNT];
+			for(int i = 0; i<TRIAL_COUNT; i++)
 			{
-				IncrementalRecursive<CharPred,Character> incrRec = new IncrementalRecursive<CharPred,Character>(aut, ba);
-				recursiveMinAut = incrRec.minimize();
+				long recDepStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> recMin = new IncrementalRecWithDeps<CharPred, Character>(aut, ba);
+				double trialTime = testMin(recMin, stdMinAut, ba, recDepStart);
+				recDepTimes[i] = trialTime;
 			}
-			catch(TimeoutException e)
-			{
-				System.out.println("Skipping because of Timeout Exception"); //TODO: does this come up?
-				continue;
-			}
-			Double recTime = ((double)(System.nanoTime() - recStart)/1000000);
-			Assert.assertTrue(recursiveMinAut.stateCount() <= stdMinAut.stateCount());
-			try
-			{
-				Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, stdMinAut, ba));
-			}
-			catch(AssertionError e)
-			{
-				System.out.println(recursiveMinAut);
-				System.out.println(stdMinAut);
-				throw e;
-			}
-			Assert.assertTrue(SFA.areEquivalent(recursiveMinAut, incrMinAut, ba));
-			Assert.assertEquals(recursiveMinAut.stateCount(), incrMinAut.stateCount());
+			Double recDepTime = arrayAvg(recDepTimes);
 			
-			//standard incremental w/ dependency check
-			System.out.println("Starting standard incremental w/ dependency check");
-			long depStart = System.nanoTime();
-			SFA<CharPred, Character> depMinAut;
-			try
+			System.out.println("Starting standard incremental w/ dependency check...");
+			double[] depTimes = new double[TRIAL_COUNT];
+			for(int i = 0; i<TRIAL_COUNT; i++)
 			{
-				IncrWithDependencyChecks<CharPred,Character> incrDep = new IncrWithDependencyChecks<CharPred,Character>(aut, ba);
-				depMinAut = incrDep.minimize();
+				long depStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> depMin = new IncrWithDependencyChecks<CharPred, Character>(aut, ba);
+				double trialTime = testMin(depMin, stdMinAut, ba, depStart);
+				depTimes[i] = trialTime;
 			}
-			catch(TimeoutException e)
+			Double depTime = arrayAvg(depTimes);
+			
+			System.out.println("Starting incremental w/ simple neq initialization...");
+			double[] neqTimes = new double[TRIAL_COUNT]; 
+			for(int i = 0; i<TRIAL_COUNT; i++)
 			{
-				System.out.println("Skipping because of Timeout Exception"); //TODO: does this come up?
-				continue;
+				long neqStart = System.nanoTime();
+				MinimizationAlgorithm<CharPred,Character> neqMin = new IncrSimpleNEQ<CharPred, Character>(aut, ba);
+				double trialTime = testMin(neqMin, stdMinAut, ba, neqStart);
+				neqTimes[i] = trialTime;
 			}
-			catch(OutOfMemoryError e)
-			{
-				continue;
-			}
-			Double depTime = ((double)(System.nanoTime() - depStart)/1000000);
-			Assert.assertTrue(depMinAut.stateCount() <= stdMinAut.stateCount());
-			try
-			{
-				Assert.assertTrue(SFA.areEquivalent(depMinAut, stdMinAut, ba));
-			}
-			catch(AssertionError e)
-			{
-				System.out.println(depMinAut);
-				System.out.println(stdMinAut);
-				throw e;
-			}
-			Assert.assertTrue(SFA.areEquivalent(depMinAut, incrMinAut, ba));
-			Assert.assertEquals(depMinAut.stateCount(), incrMinAut.stateCount());
+			Double neqTime = arrayAvg(neqTimes);
 	
 			String initialStateCount = Integer.toString(aut.stateCount());
 			String transCount = Integer.toString(aut.getTransitionCount());
@@ -333,10 +344,11 @@ public class TestIncrementalMinimization
 			ArrayList<CharPred> predList = new ArrayList<CharPred>(predSet);
 			String mintermCount = Integer.toString(ba.GetMinterms(predList).size());
 			
-			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
+			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, %s, %s",
 					initialStateCount, finalStateCount, transCount, predCount, mintermCount,
 					Double.toString(incrTime), Double.toString(stdTime), Double.toString(mooreTime),
-					Double.toString(upfrontTime), Double.toString(recTime), Double.toString(depTime));
+					Double.toString(upfrontTime), Double.toString(recTime), Double.toString(recDepTime),
+					Double.toString(depTime), Double.toString(neqTime));
 			System.out.println(message);
 			System.out.println("");
 			messageList.add(message);
@@ -345,7 +357,8 @@ public class TestIncrementalMinimization
 		Writer writer = new BufferedWriter(new OutputStreamWriter(file));
 		writer.write("initial states, final states, transition count, predicate count, minterm count," +
 				"incremental time, standard time, Moore time, upfront incremental time, " +
-				"recursive symbolic incremental, With Dependency check \n");
+				"recursive symbolic incremental, Rec w/ Dependency check, Stdrd q/ Dependency check," +
+				" With simple neq \n");
 		for (String msg : messageList)
 		{
 			writer.write(msg + "\n");
@@ -964,7 +977,5 @@ public class TestIncrementalMinimization
 		writer.close();
 		
 	}
-	
-	
 
 }

@@ -167,7 +167,7 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 		}
 	}
 		
-	private class StateComparator implements Comparator<Integer>
+	protected class StateComparator implements Comparator<Integer>
 	{
 		public int compare(Integer a, Integer b)
 		{
@@ -188,8 +188,8 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 	protected final int num_pairs;
 	
 	protected HashSet<List<Integer>> neq;
+	protected StateComparator stateComp;
 	private LinkedHashMap<Integer, Integer> distanceToFinalMap; //maps states to distance from final state, does not contain sink states
-	private StateComparator stateComp;
 	private Long startTime;
 	private LinkedHashMap<Long, Integer> record; //maps time stamps to number of states
 	private Long singularRecord = null;
@@ -212,7 +212,28 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 		this.record = new LinkedHashMap<Long, Integer>();
 	}
 	
-	private LinkedHashMap<Integer, Integer> generateDistanceToFinalMap()
+	protected EquivTest makeEquivTest(DisjointSets<Integer> equivClasses)
+	{
+		HashSet<List<Integer>> equiv = new HashSet<List<Integer>>(num_pairs,0.9f);
+		HashSet<List<Integer>> path = new HashSet<List<Integer>>(num_pairs,0.9f);
+		return new EquivTest(equivClasses, equiv, path);
+	}
+	
+	protected List<Integer> normalize(Integer p, Integer q)
+	{
+		List<Integer> pair;
+		if(stateComp.compare(p, q) < 0)
+		{
+			pair = Arrays.asList(p,q);
+		}
+		else
+		{
+			pair = Arrays.asList(q,p);
+		}
+		return pair;
+	}
+	
+	protected LinkedHashMap<Integer, Integer> generateDistanceToFinalMap()
 	{
 		LinkedHashMap<Integer, Integer> distanceMap = new LinkedHashMap<Integer, Integer>();
 		Queue<Integer> stateQueue = new LinkedList<Integer>();
@@ -237,27 +258,6 @@ public class IncrementalMinimization<P,S> implements MinimizationAlgorithm<P,S>
 			}
 		}
 		return distanceMap;
-	}
-	
-	protected EquivTest makeEquivTest(DisjointSets<Integer> equivClasses)
-	{
-		HashSet<List<Integer>> equiv = new HashSet<List<Integer>>(num_pairs,0.9f);
-		HashSet<List<Integer>> path = new HashSet<List<Integer>>(num_pairs,0.9f);
-		return new EquivTest(equivClasses, equiv, path);
-	}
-	
-	protected List<Integer> normalize(Integer p, Integer q)
-	{
-		List<Integer> pair;
-		if(stateComp.compare(p, q) < 0)
-		{
-			pair = Arrays.asList(p,q);
-		}
-		else
-		{
-			pair = Arrays.asList(q,p);
-		}
-		return pair;
 	}
 	
 	protected Integer getStateDistanceToFinal(Integer state)
