@@ -71,7 +71,11 @@ public class IncrWithDependencyChecks<P,S> extends IncrementalMinimization<P,S>
 							{
 								neq.add(pathPair); //TODO: remove this call from outer minimize method
 							}
-							deps.mergeStates(equivClasses, newPath);
+							int result = deps.mergeStates(equivClasses, newPath);
+							if(result > 0)
+							{
+								System.out.println(String.format("Non-recursive alg merged %d pairs", result));
+							}
 							this.path.clear();
 							return false;
 						}

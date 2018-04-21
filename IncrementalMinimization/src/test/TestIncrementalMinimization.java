@@ -56,7 +56,7 @@ import automata.sfa.SFAMove;
 public class TestIncrementalMinimization 
 {
 	public static final String REGEXLIB_FILE = "regex/regexlib-SFA.txt";
-	public static final int TRIAL_COUNT = 10;
+	public static final int TRIAL_COUNT = 5;
 
 	@Test
 	public void testMyAut() throws TimeoutException
@@ -344,7 +344,7 @@ public class TestIncrementalMinimization
 			ArrayList<CharPred> predList = new ArrayList<CharPred>(predSet);
 			String mintermCount = Integer.toString(ba.GetMinterms(predList).size());
 			
-			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, %s, %s",
+			String message = String.format("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s",
 					initialStateCount, finalStateCount, transCount, predCount, mintermCount,
 					Double.toString(incrTime), Double.toString(stdTime), Double.toString(mooreTime),
 					Double.toString(upfrontTime), Double.toString(recTime), Double.toString(recDepTime),
@@ -430,6 +430,24 @@ public class TestIncrementalMinimization
 		compareRuntimeFromRegex(allRegex, "powerEN_compare_test.txt");
 	}
 	
+	private <P,S> double getPercentMinimized(SFA<P,S> originalAut, SFA<P,S> stdMinAut, SFA<P,S> thisMinAut)
+	{
+		double initialCount = (double) originalAut.stateCount();
+		double finalCount = (double) stdMinAut.stateCount();
+		double thisCount = (double) thisMinAut.stateCount();
+		double thisPercentMinimized;
+		if (thisCount <= finalCount)
+		{
+			thisPercentMinimized = 1.;
+		}
+		else
+		{
+			thisPercentMinimized = (initialCount - thisCount)/(initialCount - finalCount);
+		}
+		Assert.assertTrue(thisPercentMinimized >= 0);
+		return thisPercentMinimized;
+	}
+	
 	@Test
 	public void testBudget() throws TimeoutException, IOException
 	{
@@ -477,127 +495,107 @@ public class TestIncrementalMinimization
 			System.out.println("Determinized.");
 			
 			//Standard minimiazation runs first
-			long stdStart = System.nanoTime();
-			SFA<CharPred, Character> stdMinAut;
-			long budget;
-			try
+			double[] stdTimes = new double[TRIAL_COUNT];
+			SFA<CharPred, Character> stdMinAut = null;
+			for(int i = 0; i < TRIAL_COUNT; i++)
 			{
-				stdMinAut = aut.minimize(ba);
-				budget = System.nanoTime() - stdStart;
+				long budget;
+				long stdStart = System.nanoTime();
+				try
+				{
+					stdMinAut = aut.minimize(ba);
+					budget = System.nanoTime() - stdStart;
+				}
+				catch(TimeoutException e)
+				{
+					continue;
+				}
+				Assert.assertNotNull(stdMinAut);
+				double trialTime = (new Double(budget));
+				stdTimes[i] = trialTime;
 			}
-			catch(TimeoutException e)
-			{
-				continue;
-			}
-			double bms = (new Double(budget))/1000000;
-			System.out.println(String.format("Standard minimization computed, budget: %f ms", bms));
+			double budget = arrayAvg(stdTimes)/1000000;
+			Long budgetLong = Double.valueOf(arrayAvg(stdTimes)).longValue();
+			
+			System.out.println(String.format("Standard minimization computed, budget: %f ms", budget));
 			
 			//Incremental minimization runs with time budget of standard minimization
-			SFA<CharPred, Character> incrMinAut;
-			try
+			double[] incrPercents = new double[TRIAL_COUNT]; 
+			for(int i =0; i < TRIAL_COUNT; i++)
 			{
-				IncrementalMinimization<CharPred, Character> incrMin = new IncrementalMinimization<CharPred, Character>(aut,ba);
-				incrMinAut = incrMin.minimize(budget);
+				SFA<CharPred, Character> incrMinAut;
+				try
+				{
+					IncrementalMinimization<CharPred, Character> incrMin = new IncrementalMinimization<CharPred, Character>(aut,ba);
+					incrMinAut = incrMin.minimize(budgetLong);
+				}
+				catch(TimeBudgetExceededException e)
+				{
+					incrMinAut = e.getReturnAut();
+				}
+				catch(TimeoutException e)
+				{
+					continue;
+				}
+				Assert.assertTrue(SFA.areEquivalent(aut, incrMinAut, ba));
+				incrPercents[i] = getPercentMinimized(aut, stdMinAut, incrMinAut);
 			}
-			catch(TimeBudgetExceededException e)
-			{
-				incrMinAut = e.getReturnAut();
-			}
-			catch(TimeoutException e)
-			{
-				continue;
-			}
-			Assert.assertTrue(SFA.areEquivalent(aut, incrMinAut, ba));
-			System.out.println("Incremental minimized.");
+			double incrPercent = arrayAvg(incrPercents);
+			System.out.println("Incremental minimization completed.");
 			
 			//Naive Minimization runs on time budget
-			SFA<CharPred, Character> upfrontIncrAut;
-			try
+			double[] upfPercents = new double[TRIAL_COUNT];
+			for(int i=0; i<TRIAL_COUNT; i++)
 			{
-				IncrementalNaive<CharPred,Character> naiveMin = new IncrementalNaive<CharPred,Character>(aut, ba);
-				upfrontIncrAut = naiveMin.minimize(budget);
+				SFA<CharPred, Character> upfrontIncrAut;
+				try
+				{
+					IncrementalNaive<CharPred,Character> naiveMin = new IncrementalNaive<CharPred,Character>(aut, ba);
+					upfrontIncrAut = naiveMin.minimize(budgetLong);
+				}
+				catch(TimeBudgetExceededException e)
+				{
+					upfrontIncrAut = e.getReturnAut();
+				}
+				catch(TimeoutException e)
+				{
+					continue;
+				}
+				Assert.assertTrue(SFA.areEquivalent(aut, upfrontIncrAut, ba));
+				upfPercents[i] = getPercentMinimized(aut, stdMinAut, upfrontIncrAut);
 			}
-			catch(TimeBudgetExceededException e)
-			{
-				upfrontIncrAut = e.getReturnAut();
-			}
-			catch(TimeoutException e)
-			{
-				continue;
-			}
-			/*catch(OutOfMemoryError e)
-			{
-				continue;
-			}*/
-			Assert.assertTrue(SFA.areEquivalent(aut, upfrontIncrAut, ba));
-			System.out.println("Naive incremental minimized.");
+			double upfPercent = arrayAvg(upfPercents);
+			System.out.println("Naive incremental completed.");
 			
-			//Incremental minimization runs with time budget of standard minimization
-			SFA<CharPred, Character> depMinAut;
-			try
+			//Incremental minimization w/ dependency checking
+			double[] depPercents = new double[TRIAL_COUNT];
+			for(int i=0; i<TRIAL_COUNT; i++)
 			{
-				IncrementalMinimization<CharPred, Character> depMin = new IncrWithDependencyChecks<CharPred, Character>(aut,ba);
-				depMinAut = depMin.minimize(budget);
+				SFA<CharPred, Character> depMinAut;
+				try
+				{
+					IncrementalMinimization<CharPred, Character> depMin = new IncrWithDependencyChecks<CharPred, Character>(aut,ba);
+					depMinAut = depMin.minimize(budgetLong);
+				}
+				catch(TimeBudgetExceededException e)
+				{
+					depMinAut = e.getReturnAut();
+				}
+				catch(TimeoutException e)
+				{
+					continue;
+				}
+				Assert.assertTrue(SFA.areEquivalent(aut, depMinAut, ba));
+				depPercents[i] = getPercentMinimized(aut, stdMinAut, depMinAut);
 			}
-			catch(TimeBudgetExceededException e)
-			{
-				depMinAut = e.getReturnAut();
-			}
-			catch(TimeoutException e)
-			{
-				continue;
-			}
-			Assert.assertTrue(SFA.areEquivalent(aut, upfrontIncrAut, ba));
-			System.out.println("Incremental w/ Dependency check minimized.");
+			double depPercent = arrayAvg(depPercents);
+			System.out.println("Incremental w/ Dependency check completed.");
 			
-			int initialCount = aut.stateCount();
-			String initialStateCount = Integer.toString(initialCount);
-			int finalCount = stdMinAut.stateCount();
-			String finalStateCount =  Integer.toString(finalCount);
-			int incrCount = incrMinAut.stateCount();
-			String incrStateCount= Integer.toString(incrCount);
-			int upfrontCount = upfrontIncrAut.stateCount();
-			String upfrontStateCount = Integer.toString(upfrontCount);
-			int depCount = depMinAut.stateCount();
-			String depStateCount = Integer.toString(depCount);
-					
-			double incrPercentMinimized;
-			if (incrCount <= finalCount)
-			{
-				incrPercentMinimized = 1.;
-			}
-			else
-			{
-				incrPercentMinimized = ((double) initialCount - incrCount)/((double) initialCount - finalCount);
-			}
-			String incrPercent = Double.toString(incrPercentMinimized);
-			double upfPercentMinimized;
-			if (upfrontCount <= finalCount)
-			{
-				upfPercentMinimized = 1.;
-			}
-			else
-			{
-				upfPercentMinimized = ((double) initialCount - upfrontCount)/((double)initialCount - finalCount);
-			}
-			String upfPercent = Double.toString(upfPercentMinimized);
-			double depPercentMinimized;
-			if (depCount <= finalCount)
-			{
-				depPercentMinimized = 1.;
-			}
-			else
-			{
-				depPercentMinimized = ((double) initialCount - depCount)/((double) initialCount - finalCount);
-			}
-			String depPercent = Double.toString(depPercentMinimized);
-			
-			String msg = String.format("%s, %s, %s, %s, %s, %s, %s, %s", 
-					initialStateCount, finalStateCount, incrStateCount, upfrontCount, depCount, 
+			String msg = String.format("%s, %s, %s, %s, %s", 
+					Integer.toString(aut.stateCount()), Integer.toString(stdMinAut.stateCount()), 
 					incrPercent, upfPercent, depPercent);
 			messageList.add(msg);
 			System.out.println(msg);
-			Assert.assertTrue(incrPercentMinimized >= 0);
 			System.out.println("");
 		}
 		FileOutputStream file = new FileOutputStream("budget_test.txt");
@@ -644,7 +642,7 @@ public class TestIncrementalMinimization
 		//import list of regex
 		FileReader regexFile = new FileReader(REGEXLIB_FILE);
 		BufferedReader read = new BufferedReader(regexFile);
-		ArrayList<String> regexList = new ArrayList<String>();
+		ArrayList<String> initialRegexList = new ArrayList<String>();
 		String line;
 		while(true)
 		{
@@ -653,8 +651,15 @@ public class TestIncrementalMinimization
 			{
 				break;
 			}
-			regexList.add(line);
+			initialRegexList.add(line);
 		}
+		ArrayList<String> regexList = new ArrayList<String>();
+		for(int i =0; i<TRIAL_COUNT; i++)
+		{
+			regexList.addAll(initialRegexList);
+		}
+		Assert.assertEquals(initialRegexList.size()*TRIAL_COUNT, regexList.size());
+		
 		//regex converted to SFAs and minimized
 		UnaryCharIntervalSolver ba = new UnaryCharIntervalSolver();
 		ArrayList<String> messageList = new ArrayList<String>();

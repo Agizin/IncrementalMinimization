@@ -134,7 +134,8 @@ public class DependencyGraph
 		}
 	}
 	
-	private int mergePair(StatePair pairEntry, DisjointSets<Integer> equivClasses, HashSet<List<Integer>> badPath) throws TimeoutException
+	private int mergePair(StatePair pairEntry, DisjointSets<Integer> equivClasses, 
+			HashSet<List<Integer>> badPairs) throws TimeoutException
 	{
 		
 		Queue<StatePair> depQueue = new LinkedList<StatePair>();
@@ -143,23 +144,23 @@ public class DependencyGraph
 		while(!depQueue.isEmpty())
 		{
 			StatePair dep = depQueue.remove();
-			if(seenPairs.contains(dep))
+			if(seenPairs.contains(dep) ||
+					equivClasses.find(dep.pair.get(0)) == equivClasses.find(dep.pair.get(1)))
 			{
 				continue;
 			}
 			seenPairs.add(dep);
-			if(!dep.isTested())
-			{
-				return 0;
-			}
-			if(badPath.contains(dep.pair))
+			if(!dep.isTested() || badPairs.contains(dep.pair))
 			{
 				return 0;
 			}
 			depQueue.addAll(dep.getDependencies());
 		}
-		equivClasses.union(pairEntry.pair.get(0), pairEntry.pair.get(1));
-		return 1;
+		for(StatePair mergePair : seenPairs)
+		{
+			equivClasses.union(mergePair.pair.get(0), mergePair.pair.get(1));
+		}
+		return seenPairs.size();
 	}
 	
 	public int mergeStates(DisjointSets<Integer> equivClasses, HashSet<List<Integer>> badPath) throws TimeoutException

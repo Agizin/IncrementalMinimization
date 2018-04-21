@@ -11,7 +11,7 @@ testsfile = sys.argv[1]
 xIndex = int(sys.argv[2])
 percent1_index = int(sys.argv[3])
 percent2_index = int(sys.argv[4])
-#percent3_index = int(sys.argv[5]) #TODO: generalize to arbitrary number of indices
+percent3_index = int(sys.argv[5]) #TODO: generalize to arbitrary number of indices
 increment = int(sys.argv[6])
 cutoff = int(sys.argv[7])
 
@@ -48,7 +48,7 @@ def generate_data(data, increment, cutoff):
             break
         p1 = data[row][percent1_index]
         p2 = data[row][percent2_index]
-        #p3 = data[row][percent3_index]
+        p3 = data[row][percent3_index]
         tick = ticks[cur_index]
         actual_tick = get_tick_from_point(x)
         while(tick != actual_tick):
@@ -60,12 +60,12 @@ def generate_data(data, increment, cutoff):
             count = 1
             p1_data.append(p1)
             p2_data.append(p2)
-            #p3_data.append(p3)
+            p3_data.append(p3)
         else:
             count += 1
             p1_data[cur_index] += (p1 - p1_data[cur_index])/float(count)
             p2_data[cur_index] += (p2 - p2_data[cur_index])/float(count)
-            #p3_data[cur_index] += (p3 - p3_data[cur_index])/float(count)
+            p3_data[cur_index] += (p3 - p3_data[cur_index])/float(count)
     assert(len(ticks) == len(p1_data))
     assert(len(p1_data) == len(p2_data))
     return ticks, p1_data, p2_data, p3_data
@@ -81,12 +81,12 @@ ticks, p1_data, p2_data, p3_data = generate_data(fData, increment, cutoff)
 
 p1_data = [p1*100 for p1 in p1_data]
 p2_data = [p2*100 for p2 in p2_data]
-#p3_data = [p3*100 for p3 in p3_data]
+p3_data = [p3*100 for p3 in p3_data]
 fig, ax = pyplot.subplots(1,1)
 percent_format = mtick.FormatStrFormatter("%.0f%%")
-ax.bar([a - 0.15 for a in range(0,len(p1_data))], p1_data, width=0.20, label="Symbolic Incremental")
-ax.bar([b + 0.15 for b in range(0,len(p2_data))], p2_data, width=0.20, label="'Naive' Incremental")
-#ax.bar([c + 0.20 for c in range(0,len(p3_data))], p3_data, width=0.20, label ="Incremental with Dependency Check")
+ax.bar([a - 0.20 for a in range(0,len(p1_data))], p1_data, width=0.20, label="Efficient Incremental")
+ax.bar([b + 0.0 for b in range(0,len(p2_data))], p2_data, width=0.20, label="Naive Incremental")
+ax.bar([c + 0.20 for c in range(0,len(p3_data))], p3_data, width=0.20, label ="Incremental with Dependency Check")
 pyplot.xticks(range(0, len(ticks)), ticks, fontsize=6)
 ax.yaxis.set_major_formatter(percent_format)
 pyplot.xlabel(xAxis)

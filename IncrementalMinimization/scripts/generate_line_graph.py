@@ -3,7 +3,7 @@ import sys
 
 xAxis = "Number of States"
 yAxis = "Average Minimization Time (ms)"
-title = "Comparison of SFA Minimization Algorithms"
+title = "Comparison of Incremental SFA Minimization Algorithms"
 scale = "log"
 
 testsfile = sys.argv[1]
@@ -49,12 +49,17 @@ print(sum(average_mins)/len(average_mins))
 
 fData = mergeData(fData, xIndex)
 
+lineStyles = ['-','--','-.',':'] #Different line style markers
+
 xData = [row[xIndex] for row in fData if row[xIndex] <= cutoff]
+style_num = 0
 for i in graph_indices:
+    assert(style_num < len(lineStyles))
     graphData = [row[i] for row in fData[:len(xData)]]
-    pyplot.plot(xData, graphData, label=title_row[i], linewidth=1.0)
+    pyplot.plot(xData, graphData, label=title_row[i], linestyle=lineStyles[style_num], linewidth=1.0)
+    style_num += 1
 pyplot.yscale(scale)
-pyplot.legend(loc=0)
+pyplot.legend(loc=4)
 pyplot.xlabel(xAxis)
 pyplot.ylabel(yAxis)
 pyplot.title(title)
