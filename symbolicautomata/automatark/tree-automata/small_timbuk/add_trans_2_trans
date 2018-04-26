@@ -1,8 +1,0 @@
-Ops
-Automaton aut
-States
-Final States q r
-Transitions
-b -> q
-a(p) -> r
-c(r, s, t) -> u
